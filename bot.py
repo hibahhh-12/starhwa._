@@ -264,13 +264,14 @@ async def mycards(ctx):
             break
 
 # ================= RUN BOT =================
-if __name__ == "__main__":
-    keep_alive()  # optional for Railway/Glitch uptime
-    TOKEN = os.environ.get("DISCORD_TOKEN")
-    if not TOKEN:
-        print("ERROR: DISCORD_TOKEN not found!")
-    else:
-        bot.run(TOKEN)
+import os
+
+TOKEN = os.environ.get("DISCORD_TOKEN")  
+if not TOKEN:
+    print("ERROR: DISCORD_TOKEN not found!")
+else:
+    bot.run(TOKEN)
+
 
 
 
