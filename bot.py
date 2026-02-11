@@ -277,6 +277,7 @@ async def mycards(ctx):
 
 # ================= RUN BOT =================
 keep_alive()
-bot.run("MTQ3MDc2Mzg2NDA4ODkwODAxNw.GK2mtS.vmHyVme6cDNVToWXVWT4T7kZaLwot0q0rVJzFs")
-bot.run("MTQ3MDc2Mzg2NDA4ODkwODAxNw.GK2mtS.vmHyVme6cDNVToWXVWT4T7kZaLwot0q0rVJzFs")
+import os
+TOKEN = os.environ["DISCORD_TOKEN"]
+bot.run(TOKEN)
 
