@@ -277,9 +277,9 @@ async def mycards(ctx):
 
 # ================= RUN BOT =================
 if __name__ == "__main__":
-    TOKEN = os.environ.get("DISCORD_TOKEN")
+    TOKEN = os.environ.get("DISCORD_TOKEN")  # safer: get instead of [] to avoid crash
     if not TOKEN:
-        print("ERROR: DISCORD_TOKEN not found in environment variables!")
+        print("ERROR: DISCORD_TOKEN not found!")
     else:
         bot.run(TOKEN)
 
