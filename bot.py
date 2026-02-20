@@ -11,6 +11,9 @@ from discord.ext import commands
 from flask import Flask
 from threading import Thread
 
+keep_alive()  # start the Flask server for UptimeRobot
+bot.run(TOKEN)
+
 # ================= CONSTANTS =================
 EMBED_COLOR = discord.Color.from_rgb(147, 112, 219)
 DATA_FILE = "cards.json"
@@ -18,6 +21,10 @@ WORK_COOLDOWN = 1800     # 30 min
 DAILY_COOLDOWN = 86400   # 24 hours
 
 # ================= FLASK KEEPALIVE =================
+import os
+from flask import Flask
+from threading import Thread
+
 app = Flask('')
 
 @app.route('/')
@@ -25,7 +32,9 @@ def home():
     return "Seonghwa Bot is alive 💜"
 
 def run():
-    app.run(host='0.0.0.0', port=8080)
+    # Use Render's PORT environment variable
+    port = int(os.environ.get("PORT", 8080))  # fallback to 8080 if PORT not set
+    app.run(host='0.0.0.0', port=port)
 
 def keep_alive():
     t = Thread(target=run)
@@ -291,6 +300,7 @@ if not TOKEN:
     print("ERROR: DISCORD_TOKEN not found!")
 else:
     bot.run(TOKEN)
+
 
 
 
