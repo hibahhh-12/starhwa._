@@ -126,7 +126,7 @@ async def coins(ctx):
     )
     await ctx.send(embed=embed)
 
-# ================= WORK COMMAND (30 MIN COOLDOWN) =================
+# ================= WORK (30 MIN COOLDOWN) =================
 @bot.command()
 async def work(ctx):
     user_id = str(ctx.author.id)
@@ -137,36 +137,39 @@ async def work(ctx):
 
     player = data["players"][user_id]
 
-    # make sure old players have these keys
-    player.setdefault("last_work", None)
+    # safety check for old users
+    if "last_work" not in player:
+        player["last_work"] = None
 
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.timezone.utc)  # aware UTC datetime
 
     if player["last_work"]:
         last_work = datetime.datetime.fromisoformat(player["last_work"])
+        # convert to aware if stored datetime is naive
+        if last_work.tzinfo is None:
+            last_work = last_work.replace(tzinfo=datetime.timezone.utc)
+
         diff = now - last_work
-        if diff.total_seconds() < 1800:  # 30 min cooldown
+        if diff.total_seconds() < 1800:
             remaining = 1800 - diff.total_seconds()
             minutes = int(remaining // 60)
             seconds = int(remaining % 60)
             await ctx.send(f"⏳ You already worked! Try again in {minutes}m {seconds}s.")
             return
 
-    # reward coins
+    # reward
     coins_earned = random.randint(100, 300)
     player["coins"] += coins_earned
 
-    # reward random card
+    # random card
     member = random.choice(list(data["cards"].keys()))
     rarity = random.choice(list(data["cards"][member].keys()))
     card_name = f"{data['cards'][member][rarity]['name']} ({rarity}★)"
     player["cards"].append(card_name)
 
-    # update last_work
-    player["last_work"] = now.isoformat()
+    player["last_work"] = now.isoformat()  # store aware datetime
     save_data(data)
 
-    # embed
     embed = discord.Embed(
         title="💼 You Worked!",
         description=f"You earned **{coins_earned} coins**\nAnd got 🃏 {card_name}",
@@ -176,7 +179,7 @@ async def work(ctx):
     await ctx.send(embed=embed)
 
 
-# ================= DAILY COMMAND (24 HOUR COOLDOWN) =================
+# ================= DAILY (24H COOLDOWN) =================
 @bot.command()
 async def daily(ctx):
     user_id = str(ctx.author.id)
@@ -187,36 +190,38 @@ async def daily(ctx):
 
     player = data["players"][user_id]
 
-    # make sure old players have this key
-    player.setdefault("last_daily", None)
+    # safety check for old users
+    if "last_daily" not in player:
+        player["last_daily"] = None
 
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.timezone.utc)  # aware UTC datetime
 
     if player["last_daily"]:
         last_daily = datetime.datetime.fromisoformat(player["last_daily"])
+        # convert to aware if stored datetime is naive
+        if last_daily.tzinfo is None:
+            last_daily = last_daily.replace(tzinfo=datetime.timezone.utc)
+
         diff = now - last_daily
-        if diff.total_seconds() < 86400:  # 24 hours
+        if diff.total_seconds() < 86400:
             remaining = 86400 - diff.total_seconds()
             hours = int(remaining // 3600)
             minutes = int((remaining % 3600) // 60)
             await ctx.send(f"⏳ You already claimed daily! Try again in {hours}h {minutes}m.")
             return
 
-    # reward coins
+    # reward
     coins_earned = 500
     player["coins"] += coins_earned
 
-    # reward random card
     member = random.choice(list(data["cards"].keys()))
     rarity = random.choice(list(data["cards"][member].keys()))
     card_name = f"{data['cards'][member][rarity]['name']} ({rarity}★)"
     player["cards"].append(card_name)
 
-    # update last_daily
-    player["last_daily"] = now.isoformat()
+    player["last_daily"] = now.isoformat()  # store aware datetime
     save_data(data)
 
-    # embed
     embed = discord.Embed(
         title="🌟 Daily Reward!",
         description=f"You received **{coins_earned} coins** + a random card!",
@@ -286,6 +291,7 @@ if not TOKEN:
     print("ERROR: DISCORD_TOKEN not found!")
 else:
     bot.run(TOKEN)
+
 
 
 
