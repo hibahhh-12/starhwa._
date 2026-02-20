@@ -11,8 +11,6 @@ from discord.ext import commands
 from flask import Flask
 from threading import Thread
 
-keep_alive()  # start the Flask server for UptimeRobot
-bot.run(TOKEN)
 
 # ================= CONSTANTS =================
 EMBED_COLOR = discord.Color.from_rgb(147, 112, 219)
@@ -45,6 +43,9 @@ intents = discord.Intents.default()
 intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
+
+keep_alive()  # start the Flask server for UptimeRobot
+bot.run(TOKEN)
 
 # ================= DATA LOAD/ SAVE =================
 def load_data():
@@ -300,6 +301,7 @@ if not TOKEN:
     print("ERROR: DISCORD_TOKEN not found!")
 else:
     bot.run(TOKEN)
+
 
 
 
