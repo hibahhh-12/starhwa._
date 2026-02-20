@@ -45,7 +45,7 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 
 keep_alive()  # start the Flask server for UptimeRobot
-bot.run(TOKEN)
+bot.run(DISCORD_TOKEN)
 
 # ================= DATA LOAD/ SAVE =================
 def load_data():
@@ -301,6 +301,7 @@ if not TOKEN:
     print("ERROR: DISCORD_TOKEN not found!")
 else:
     bot.run(TOKEN)
+
 
 
 
