@@ -54,7 +54,7 @@ data = load_data()
 @bot.command()
 async def help(ctx):
     embed = discord.Embed(
-        title="💜 ATEEZ + LYKN Card Bot",
+        title="💜 K-POP and T-POP Card Bot !",
         description="Collect cards, earn coins, and flex your collection ✨",
         color=EMBED_COLOR
     )
@@ -126,40 +126,47 @@ async def coins(ctx):
     )
     await ctx.send(embed=embed)
 
-# ================= WORK =================
+# ================= WORK COMMAND (30 MIN COOLDOWN) =================
 @bot.command()
 async def work(ctx):
     user_id = str(ctx.author.id)
+
     if user_id not in data["players"]:
         await ctx.send("Use `!start` first 💜")
         return
 
     player = data["players"][user_id]
-    if "last_work" not in player:
-        player["last_work"] = None
+
+    # make sure old players have these keys
+    player.setdefault("last_work", None)
 
     now = datetime.datetime.now(datetime.timezone.utc)
+
     if player["last_work"]:
         last_work = datetime.datetime.fromisoformat(player["last_work"])
         diff = now - last_work
-        if diff.total_seconds() < WORK_COOLDOWN:
-            remaining = WORK_COOLDOWN - diff.total_seconds()
+        if diff.total_seconds() < 1800:  # 30 min cooldown
+            remaining = 1800 - diff.total_seconds()
             minutes = int(remaining // 60)
             seconds = int(remaining % 60)
             await ctx.send(f"⏳ You already worked! Try again in {minutes}m {seconds}s.")
             return
 
-    # Reward coins and card
+    # reward coins
     coins_earned = random.randint(100, 300)
     player["coins"] += coins_earned
 
+    # reward random card
     member = random.choice(list(data["cards"].keys()))
     rarity = random.choice(list(data["cards"][member].keys()))
     card_name = f"{data['cards'][member][rarity]['name']} ({rarity}★)"
     player["cards"].append(card_name)
+
+    # update last_work
     player["last_work"] = now.isoformat()
     save_data(data)
 
+    # embed
     embed = discord.Embed(
         title="💼 You Worked!",
         description=f"You earned **{coins_earned} coins**\nAnd got 🃏 {card_name}",
@@ -168,39 +175,48 @@ async def work(ctx):
     embed.set_image(url=data["cards"][member][rarity]["image"])
     await ctx.send(embed=embed)
 
-# ================= DAILY =================
+
+# ================= DAILY COMMAND (24 HOUR COOLDOWN) =================
 @bot.command()
 async def daily(ctx):
     user_id = str(ctx.author.id)
+
     if user_id not in data["players"]:
         await ctx.send("Use `!start` first 💜")
         return
 
     player = data["players"][user_id]
-    if "last_daily" not in player:
-        player["last_daily"] = None
+
+    # make sure old players have this key
+    player.setdefault("last_daily", None)
 
     now = datetime.datetime.now(datetime.timezone.utc)
+
     if player["last_daily"]:
         last_daily = datetime.datetime.fromisoformat(player["last_daily"])
         diff = now - last_daily
-        if diff.total_seconds() < DAILY_COOLDOWN:
-            remaining = DAILY_COOLDOWN - diff.total_seconds()
+        if diff.total_seconds() < 86400:  # 24 hours
+            remaining = 86400 - diff.total_seconds()
             hours = int(remaining // 3600)
             minutes = int((remaining % 3600) // 60)
             await ctx.send(f"⏳ You already claimed daily! Try again in {hours}h {minutes}m.")
             return
 
-    # Reward
+    # reward coins
     coins_earned = 500
     player["coins"] += coins_earned
+
+    # reward random card
     member = random.choice(list(data["cards"].keys()))
     rarity = random.choice(list(data["cards"][member].keys()))
     card_name = f"{data['cards'][member][rarity]['name']} ({rarity}★)"
     player["cards"].append(card_name)
+
+    # update last_daily
     player["last_daily"] = now.isoformat()
     save_data(data)
 
+    # embed
     embed = discord.Embed(
         title="🌟 Daily Reward!",
         description=f"You received **{coins_earned} coins** + a random card!",
@@ -209,7 +225,6 @@ async def daily(ctx):
     embed.add_field(name="New Card", value=card_name)
     embed.set_image(url=data["cards"][member][rarity]["image"])
     await ctx.send(embed=embed)
-
 # ================= MYCARDS PAGINATED =================
 @bot.command()
 async def mycards(ctx):
@@ -271,6 +286,7 @@ if not TOKEN:
     print("ERROR: DISCORD_TOKEN not found!")
 else:
     bot.run(TOKEN)
+
 
 
 
