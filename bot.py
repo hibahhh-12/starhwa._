@@ -94,6 +94,10 @@ async def help(ctx):
     embed.set_footer(text=f"Requested by {ctx.author.display_name} 💜")
     await ctx.send(embed=embed)
 
+@bot.event
+async def on_ready():
+    print(f"Logged in as {bot.user}")
+
 # ================= START =================
 @bot.command()
 async def start(ctx):
@@ -298,6 +302,7 @@ async def mycards(ctx):
             await msg.remove_reaction(reaction, user)
         except asyncio.TimeoutError:
             break
+
 
 
 
