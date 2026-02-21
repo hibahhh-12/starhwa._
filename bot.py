@@ -299,14 +299,6 @@ async def mycards(ctx):
         except asyncio.TimeoutError:
             break
 
-# ================= RUN BOT =================
-import os
-
-TOKEN = os.environ.get("DISCORD_TOKEN")  
-if not TOKEN:
-    print("ERROR: DISCORD_TOKEN not found!")
-else:
-    bot.run(TOKEN)
 
 
 
