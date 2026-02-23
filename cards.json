@@ -1,17 +1,14 @@
 {
   "cards": {
     "Seonghwa": {
-      "1": { "name": "Seonghwa Rarity 1", "image": "https://cdn.discordapp.com/attachments/1470795513027887297/1475591384554541117/S1.png" },
-     
+      "1": { "name": "Seonghwa Rarity 1", "image": "https://cdn.discordapp.com/attachments/1470795513027887297/1475591384554541117/S1.png" }
     },
-
     "Hongjoong": {
       "1": { "name": "Hongjoong Rarity 1", "image": "https://cdn.discordapp.com/attachments/1470795513027887297/1475592933666193438/H1.png" }
-     
     }
   },
-
   "players": {}
 }
+
 
 
