@@ -132,32 +132,69 @@ async def daily(ctx):
 # =======================
 
 @bot.command()
-async def cards(ctx):
-    pages = [
-        discord.Embed(title="Page 1", description="Card A\nCard B"),
-        discord.Embed(title="Page 2", description="Card C\nCard D"),
-        discord.Embed(title="Page 3", description="Card E\nCard F"),
-    ]
+async def mycards(ctx):
+    user_id = str(ctx.author.id)
+
+    if user_id not in data["players"]:
+        await ctx.send("Use `!start` first 💜")
+        return
+
+    cards = data["players"][user_id]["cards"]
+
+    if not cards:
+        await ctx.send("You have no cards yet 💜")
+        return
 
     current_page = 0
-    message = await ctx.send(embed=pages[current_page])
+
+    def create_embed(index):
+        card_string = cards[index]
+
+        # Extract member name (first word)
+        member = card_string.split(" ")[0]
+
+        # Extract rarity number inside parentheses
+        rarity = card_string.split("(")[1].split("★")[0]
+
+        card_data = data["cards"].get(member, {}).get(rarity)
+
+        embed = discord.Embed(
+            title=f"🃏 {card_string}",
+            color=discord.Color.purple()
+        )
+
+        if card_data:
+            embed.set_image(url=card_data["image"])
+
+        embed.set_footer(text=f"Card {index+1}/{len(cards)}")
+
+        return embed
+
+    message = await ctx.send(embed=create_embed(current_page))
+
+    if len(cards) == 1:
+        return
 
     await message.add_reaction("⬅️")
     await message.add_reaction("➡️")
 
     def check(reaction, user):
-        return user == ctx.author and str(reaction.emoji) in ["⬅️", "➡️"] and reaction.message.id == message.id
+        return (
+            user == ctx.author and
+            str(reaction.emoji) in ["⬅️", "➡️"] and
+            reaction.message.id == message.id
+        )
 
     while True:
         try:
-            reaction, user = await bot.wait_for("reaction_add", timeout=60, check=check)
+            reaction, user = await bot.wait_for("reaction_add", timeout=120, check=check)
 
             if str(reaction.emoji) == "➡️":
-                current_page = (current_page + 1) % len(pages)
-            elif str(reaction.emoji) == "⬅️":
-                current_page = (current_page - 1) % len(pages)
+                current_page = (current_page + 1) % len(cards)
+            else:
+                current_page = (current_page - 1) % len(cards)
 
-            await message.edit(embed=pages[current_page])
+            await message.edit(embed=create_embed(current_page))
             await message.remove_reaction(reaction, user)
 
         except asyncio.TimeoutError:
@@ -171,3 +208,4 @@ if __name__ == "__main__":
     keep_alive()
     TOKEN = os.environ.get("DISCORD_TOKEN")
     bot.run(TOKEN)
+
