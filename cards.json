@@ -1,54 +1,16 @@
 {
-    "cards": {
-        "Seonghwa": {
-            "1": {
-                "name": "Seonghwa Rarity 1",
-                "image": "https://i.pinimg.com/1200x/e3/0d/65/e30d6575000fa20fe31d0899e5ba087c.jpg"
-            },
-            "2": {
-                "name": "Seonghwa Rarity 2",
-                "image": "https://i.pinimg.com/1200x/26/fe/52/26fe5280aa9d2f4debeee88b11fa4e1f.jpg"
-            },
-            "3": {
-                "name": "Seonghwa Rarity 3",
-                "image": "https://i.pinimg.com/736x/ec/12/37/ec1237b05f11542791a8677bcc5fd167.jpg"
-            },
-            "4": {
-                "name": "Seonghwa Rarity 4",
-                "image": "https://i.pinimg.com/1200x/78/43/05/78430562f465f228a239cb2010ebb6f1.jpg"
-            },
-            "5": {
-                "name": "Seonghwa Rarity 5",
-                "image": "https://i.pinimg.com/736x/f2/ea/2d/f2ea2dfb3d78794b965fbc2a0f7d762f.jpg"
-            }
-        }
+  "cards": {
+    "Seonghwa": {
+      "1": { "name": "Seonghwa Rarity 1", "image": "https://cdn.discordapp.com/attachments/1470795513027887297/1475591384554541117/S1.png" },
+     
     },
-    "players": {
-        "1217730248573980753": {
-            "coins": 1597,
-            "cards": [
-                "Seonghwa Casual (1\u2605)",
-                "Seonghwa Rarity 2 (2\u2605)",
-                "Seonghwa Rarity 3 (3\u2605)",
-                "Seonghwa Rarity 3 (3\u2605)",
-                "Seonghwa Rarity 2 (2\u2605)",
-                "Seonghwa Rarity 3 (3\u2605)"
-            ],
-            "last_work": "2026-02-10T13:43:02.138319",
-            "started": true,
-            "last_daily": "2026-02-10T17:39:05.254061+00:00"
-        },
-        "1414191068613840947": {
-            "coins": 1076,
-            "cards": [
-                "Seonghwa Casual (1\u2605)",
-                "Seonghwa Rarity 3 (3\u2605)",
-                "Seonghwa Rarity 5 (5\u2605)",
-                "Seonghwa Rarity 3 (3\u2605)",
-                "Seonghwa Rarity 1 (1\u2605)"
-            ],
-            "last_work": "2026-02-10T13:43:38.688748",
-            "started": true
-        }
+
+    "Hongjoong": {
+      "1": { "name": "Hongjoong Rarity 1", "image": "https://cdn.discordapp.com/attachments/1470795513027887297/1475592933666193438/H1.png" }
+     
     }
+  },
+
+  "players": {}
+}
 }
