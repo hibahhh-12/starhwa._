@@ -89,20 +89,47 @@ async def balance(ctx):
 
 @bot.command()
 async def work(ctx):
-    user = ctx.author.id
+    user_id = str(ctx.author.id)
 
-    if user in work_cooldown:
-        if work_cooldown[user] > asyncio.get_event_loop().time():
-            remaining = int(work_cooldown[user] - asyncio.get_event_loop().time())
+    if user_id not in data["players"]:
+        await ctx.send("Use `!start` first 💜")
+        return
+
+    now = asyncio.get_event_loop().time()
+
+    if user_id in work_cooldown:
+        if work_cooldown[user_id] > now:
+            remaining = int(work_cooldown[user_id] - now)
             await ctx.send(f"⏳ Wait {remaining}s before working again.")
             return
 
+    # 💰 Coins
     earned = random.randint(50, 150)
-    coins[user] = coins.get(user, 0) + earned
+    data["players"][user_id]["coins"] += earned
 
-    work_cooldown[user] = asyncio.get_event_loop().time() + 30
+    # 🎴 Random Card Drop
+    member = random.choice(list(data["cards"].keys()))
+    rarity = random.choice(list(data["cards"][member].keys()))
 
-    await ctx.send(f"💼 You worked and earned {earned} coins!")
+    card_info = data["cards"][member][rarity]
+    card_name = f"{card_info['name']} ({rarity}★)"
+
+    data["players"][user_id]["cards"].append(card_name)
+
+    # Save
+    save_data(data)
+
+    work_cooldown[user_id] = now + 30
+
+    embed = discord.Embed(
+        title="💼 You worked!",
+        description=f"💰 +{earned} coins\n🃏 You received: **{card_name}**",
+        color=discord.Color.purple()
+    )
+
+    embed.set_image(url=card_info["image"])
+
+    await ctx.send(embed=embed)
 
 # =======================
 # DAILY COMMAND
@@ -110,22 +137,49 @@ async def work(ctx):
 
 @bot.command()
 async def daily(ctx):
-    user = ctx.author.id
+    user_id = str(ctx.author.id)
 
-    if user in daily_cooldown:
-        if daily_cooldown[user] > asyncio.get_event_loop().time():
-            remaining = int(daily_cooldown[user] - asyncio.get_event_loop().time())
+    if user_id not in data["players"]:
+        await ctx.send("Use `!start` first 💜")
+        return
+
+    now = asyncio.get_event_loop().time()
+
+    if user_id in daily_cooldown:
+        if daily_cooldown[user_id] > now:
+            remaining = int(daily_cooldown[user_id] - now)
             hours = remaining // 3600
             minutes = (remaining % 3600) // 60
             await ctx.send(f"⏳ Come back in {hours}h {minutes}m.")
             return
 
+    # 💰 Coins
     reward = 500
-    coins[user] = coins.get(user, 0) + reward
+    data["players"][user_id]["coins"] += reward
 
-    daily_cooldown[user] = asyncio.get_event_loop().time() + 86400
+    # 🎴 Random Card Drop
+    member = random.choice(list(data["cards"].keys()))
+    rarity = random.choice(list(data["cards"][member].keys()))
 
-    await ctx.send(f"🎁 You claimed your daily {reward} coins!")
+    card_info = data["cards"][member][rarity]
+    card_name = f"{card_info['name']} ({rarity}★)"
+
+    data["players"][user_id]["cards"].append(card_name)
+
+    # Save
+    save_data(data)
+
+    daily_cooldown[user_id] = now + 86400
+
+    embed = discord.Embed(
+        title="🎁 Daily Reward!",
+        description=f"💰 +{reward} coins\n🃏 You received: **{card_name}**",
+        color=discord.Color.purple()
+    )
+
+    embed.set_image(url=card_info["image"])
+
+    await ctx.send(embed=embed)
 
 # =======================
 # CARD REACTION MENU
@@ -208,4 +262,5 @@ if __name__ == "__main__":
     keep_alive()
     TOKEN = os.environ.get("DISCORD_TOKEN")
     bot.run(TOKEN)
+
 
