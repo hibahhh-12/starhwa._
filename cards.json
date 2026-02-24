@@ -23,12 +23,8 @@
     },
     "Jongho": {
       "1": { "name": "Jongho Rarity 1", "image": "https://cdn.discordapp.com/attachments/1470795513027887297/1475754962524045322/J1.png" }
-    },
-    "players": {},
-    "drop_channels": {}
+    }
+  },
+  "players": {},
+  "drop_channels": {}
 }
-
-
-
-
-
