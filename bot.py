@@ -36,8 +36,7 @@ def load_data():
         file = repo.get_contents(DATA_FILE)
         return json.loads(file.decoded_content.decode())
     except: 
-        # Fallback if file is empty
-        return {"cards": {}, "players": {}, "guilds": {}, "market": []}
+        return {"cards": {}, "players": {}, "guilds": {}}
 
 data = load_data()
 
@@ -74,11 +73,6 @@ class DropView(discord.ui.View):
         self.claimed[idx] = True
         save_data(data)
         
-        # Wishlist Check
-        for wish_uid, u_info in data["players"].items():
-            if any(w.lower() in card['name'].lower() for w in u_info.get("wishlist", [])):
-                if wish_uid != uid: await interaction.channel.send(f"🔔 <@{wish_uid}>, your wish **{card['name']}** dropped!")
-
         await interaction.response.send_message(f"✨ **{interaction.user.name}** caught **{card['name']}**!")
 
     @discord.ui.button(label="1", style=discord.ButtonStyle.secondary)
@@ -87,27 +81,6 @@ class DropView(discord.ui.View):
     async def b2(self, i, b): await self.claim(i, 1)
     @discord.ui.button(label="3", style=discord.ButtonStyle.secondary)
     async def b3(self, i, b): await self.claim(i, 2)
-
-class TradeView(discord.ui.View):
-    def __init__(self, s, r, s_c, r_c):
-        super().__init__(timeout=180)
-        self.s, self.r, self.s_c, self.r_c = s, r, s_c, r_c
-        self.s_ok, self.r_ok = False, False
-
-    @discord.ui.button(label="Confirm Trade", style=discord.ButtonStyle.green)
-    async def ok(self, i, b):
-        if i.user.id == self.s.id: self.s_ok = True
-        elif i.user.id == self.r.id: self.r_ok = True
-        else: return await i.response.send_message("Not your trade!", ephemeral=True)
-        
-        if self.s_ok and self.r_ok:
-            data["players"][str(self.s.id)]["cards"].remove(self.s_c)
-            data["players"][str(self.r.id)]["cards"].remove(self.r_c)
-            data["players"][str(self.s.id)]["cards"].append(self.r_c)
-            data["players"][str(self.r.id)]["cards"].append(self.s_c)
-            save_data(data)
-            await i.message.edit(content="✅ Trade Complete!", view=None)
-        await i.response.send_message("Confirmed!", ephemeral=True)
 
 # =======================
 # ⚔️ SLASH COMMANDS
@@ -122,67 +95,89 @@ async def start(interaction: discord.Interaction):
         "daily": 0, "work": 0, "joined": str(datetime.date.today())
     }
     save_data(data)
-    await interaction.response.send_message("✨ Welcome to **Starhwa**. Inspired by Seonghwa, you can now collect ATEEZ!")
+    await interaction.response.send_message("✨ Welcome to **Starhwa**. Inspired by Seonghwa!")
+
+@bot.tree.command(name="daily", description="Claim 500 Beads and a random ATEEZ card!")
+async def daily(interaction: discord.Interaction):
+    uid = str(interaction.user.id)
+    if uid not in data["players"]: return await interaction.response.send_message("Run `/start` first!", ephemeral=True)
+    
+    now = time.time()
+    last_daily = data["players"][uid].get("daily", 0)
+    if now - last_daily < 86400:
+        rem = int(86400 - (now - last_daily))
+        return await interaction.response.send_message(f"⏳ Come back in {rem // 3600}h {(rem % 3600) // 60}m.", ephemeral=True)
+    
+    member_name = random.choice(list(data["cards"].keys()))
+    rarity_level = random.choice(list(data["cards"][member_name].keys()))
+    card_data = data["cards"][member_name][rarity_level]
+    new_card = {"name": card_data["name"], "member": member_name, "rarity": rarity_level, "image": card_data["image"]}
+
+    data["players"][uid]["beads"] += 500
+    data["players"][uid]["cards"].append(new_card)
+    data["players"][uid]["daily"] = now
+    save_data(data)
+
+    embed = discord.Embed(title="🎁 Daily Reward", description="💰 **500 Beads** and a new card!", color=0xffd700)
+    embed.add_field(name="Card Found", value=f"✨ **{new_card['name']}**")
+    embed.set_image(url=new_card["image"])
+    await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="drop", description="Spawn 3 random ATEEZ idols")
 async def drop(interaction: discord.Interaction):
+    await interaction.response.defer()
     gid = str(interaction.guild.id)
     chan_id = data["guilds"].get(gid, {}).get("drop_channel")
     if chan_id and interaction.channel_id != chan_id:
-        return await interaction.response.send_message(f"❌ Please use the drop channel: <#{chan_id}>", ephemeral=True)
+        return await interaction.followup.send(f"❌ Use the drop channel: <#{chan_id}>")
 
     dropped_cards = []
-    embed = discord.Embed(title="🌌 Starhwa Cosmic Drop", description="Claim your favorite ATEEZ member!", color=0x2b2d31)
-    
-    # Selection logic using YOUR JSON structure
+    embed = discord.Embed(title="🌌 Starhwa Cosmic Drop", color=0x2b2d31)
     for i in range(3):
         member_name = random.choice(list(data["cards"].keys()))
         rarity_level = random.choice(list(data["cards"][member_name].keys()))
         card_data = data["cards"][member_name][rarity_level]
-        
-        # Save necessary info for claiming
-        card_obj = {
-            "name": card_data["name"],
-            "member": member_name,
-            "rarity": rarity_level,
-            "image": card_data["image"]
-        }
-        dropped_cards.append(card_obj)
-        embed.add_field(name=f"Slot {i+1}", value=f"**{card_data['name']}**\n{rarity_level}★", inline=True)
+        dropped_cards.append({"name": card_data["name"], "member": member_name, "rarity": rarity_level, "image": card_data["image"]})
+        embed.add_field(name=f"Slot {i+1}", value=f"**{card_data['name']}**", inline=True)
     
     embed.set_image(url=dropped_cards[0]["image"])
-    await interaction.response.send_message(embed=embed, view=DropView(dropped_cards))
+    await interaction.followup.send(embed=embed, view=DropView(dropped_cards))
 
-@bot.tree.command(name="inventory", description="View your card binder")
-async def inventory(interaction: discord.Interaction, idol: str = None):
+@bot.tree.command(name="burn", description="Exchange a card for 300 Beads")
+async def burn(interaction: discord.Interaction, card_name: str):
     uid = str(interaction.user.id)
-    if uid not in data["players"]: return await interaction.response.send_message("Run `/start`!")
-    
-    cards = data["players"][uid]["cards"]
-    if idol:
-        cards = [c for c in cards if idol.lower() in c['member'].lower() or idol.lower() in c['name'].lower()]
-    
-    inv_text = "\n".join([f"• **{c['name']}** ({c['rarity']}★)" for c in cards[:15]])
-    embed = discord.Embed(title=f"🎴 {interaction.user.name}'s Binder", description=inv_text or "No cards found.", color=0x9b59b6)
-    embed.set_footer(text=f"Total: {len(cards)} cards")
-    await interaction.response.send_message(embed=embed)
+    cards = data["players"].get(uid, {}).get("cards", [])
+    found = next((c for c in cards if card_name.lower() in c['name'].lower()), None)
+    if not found: return await interaction.response.send_message("Card not found!", ephemeral=True)
 
-@bot.tree.command(name="view", description="View a card in high definition")
-async def view(interaction: discord.Interaction, card_name: str):
+    cards.remove(found)
+    data["players"][uid]["beads"] += 300
+    save_data(data)
+    await interaction.response.send_message(f"🔥 Burned **{found['name']}** for 💰 300 Beads.")
+
+@bot.tree.command(name="inventory", description="View your binder")
+async def inventory(interaction: discord.Interaction):
     uid = str(interaction.user.id)
-    card = next((c for c in data["players"][uid]["cards"] if card_name.lower() in c['name'].lower()), None)
-    if not card: return await interaction.response.send_message("Card not found in your inventory!", ephemeral=True)
-    
-    embed = discord.Embed(title=card['name'], color=0xf1c40f)
-    embed.set_image(url=card['image'])
-    await interaction.response.send_message(embed=embed)
+    cards = data["players"].get(uid, {}).get("cards", [])
+    inv_text = "\n".join([f"• {c['name']}" for c in cards[:15]])
+    await interaction.response.send_message(embed=discord.Embed(title="🎴 Your Binder", description=inv_text or "Empty."))
+
+@bot.tree.command(name="setchannel", description="Admin: Set drop channel")
+@app_commands.checks.has_permissions(manage_channels=True)
+async def setchannel(interaction: discord.Interaction, channel: discord.TextChannel):
+    await interaction.response.defer()
+    gid = str(interaction.guild.id)
+    if gid not in data["guilds"]: data["guilds"][gid] = {}
+    data["guilds"][gid]["drop_channel"] = channel.id
+    save_data(data)
+    await interaction.followup.send(f"✅ Drops set to {channel.mention}!")
 
 @bot.tree.command(name="work", description="Play RPS for Beads")
 async def work(interaction: discord.Interaction):
     uid = str(interaction.user.id)
     now = time.time()
-    if now - data["players"][uid].get("work", 0) < 1800:
-        return await interaction.response.send_message("⏳ Seonghwa says rest! 30m cooldown.", ephemeral=True)
+    if now - data["players"].get(uid, {}).get("work", 0) < 1800:
+        return await interaction.response.send_message("⏳ 30m cooldown.", ephemeral=True)
 
     await interaction.response.send_message("✊ **Rock, Paper, or Scissors?**")
     def check(m): return m.author == interaction.user and m.content.lower() in ["rock", "paper", "scissors"]
@@ -190,43 +185,13 @@ async def work(interaction: discord.Interaction):
         msg = await bot.wait_for("message", timeout=20, check=check)
         bot_choice = random.choice(["rock", "paper", "scissors"])
         user_choice = msg.content.lower()
-        
-        if user_choice == bot_choice: res, beads = "🤝 Tie!", 150
-        elif (user_choice=="rock" and bot_choice=="scissors") or (user_choice=="paper" and bot_choice=="rock") or (user_choice=="scissors" and bot_choice=="paper"):
-            res, beads = "🏆 Win!", 400
-        else: res, beads = "💀 Lose!", 50
-
+        beads = 400 if (user_choice=="rock" and bot_choice=="scissors") or (user_choice=="paper" and bot_choice=="rock") or (user_choice=="scissors" and bot_choice=="paper") else 50
+        if user_choice == bot_choice: beads = 150
         data["players"][uid]["beads"] += beads
         data["players"][uid]["work"] = now
         save_data(data)
-        await interaction.followup.send(f"**{res}** Bot chose {bot_choice}. Earned 💰 {beads} Beads!")
+        await interaction.followup.send(f"Bot chose {bot_choice}. Earned 💰 {beads} Beads!")
     except asyncio.TimeoutError: await interaction.followup.send("⏰ Too slow!")
-
-@bot.tree.command(name="setchannel", description="Admin: Set drop channel")
-@app_commands.checks.has_permissions(manage_channels=True)
-async def setchannel(interaction: discord.Interaction, channel: discord.TextChannel):
-    gid = str(interaction.guild.id)
-    if gid not in data["guilds"]: data["guilds"][gid] = {}
-    data["guilds"][gid]["drop_channel"] = channel.id
-    save_data(data)
-    await interaction.response.send_message(f"✅ Drops set to {channel.mention}!")
-
-@bot.tree.command(name="profile", description="Check your stats")
-async def profile(interaction: discord.Interaction, user: discord.Member = None):
-    user = user or interaction.user
-    p = data["players"].get(str(user.id))
-    if not p: return await interaction.response.send_message("User not registered!")
-    embed = discord.Embed(title=f"👤 {user.name}'s Profile", color=0x3498db)
-    embed.add_field(name="💰 Beads", value=p["beads"])
-    embed.add_field(name="🎴 Cards", value=len(p["cards"]))
-    embed.set_thumbnail(url=user.avatar.url if user.avatar else None)
-    await interaction.response.send_message(embed=embed)
-
-@bot.tree.command(name="leaderboard", description="Rich list")
-async def leaderboard(interaction: discord.Interaction):
-    top = sorted(data["players"].items(), key=lambda x: x[1].get("beads", 0), reverse=True)[:10]
-    lb = "\n".join([f"**#{i+1}** <@{k}> — 💰 {v['beads']}" for i, (k,v) in enumerate(top)])
-    await interaction.response.send_message(embed=discord.Embed(title="🏆 Global Leaderboard", description=lb or "No users yet!"))
 
 # =======================
 # 🚀 RUN STARHWA
@@ -234,4 +199,3 @@ async def leaderboard(interaction: discord.Interaction):
 if __name__ == "__main__":
     keep_alive()
     bot.run(os.environ.get("DISCORD_TOKEN"))
-
