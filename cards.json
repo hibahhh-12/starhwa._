@@ -26,5 +26,7 @@
     }
   },
   "players": {},
-  "drop_channels": {}
+  "drop_channels": {
+    "YOUR_GUILD_ID_HERE": "YOUR_CHANNEL_ID_HERE"
+  }
 }
