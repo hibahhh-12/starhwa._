@@ -312,7 +312,11 @@ async def random_drop_loop():
 
         await asyncio.sleep(600)  # 10 minutes
 
-bot.loop.create_task(random_drop_loop())
+@bot.event
+async def on_ready():
+    print(f"Logged in as {bot.user}")
+    # start the random drop loop inside on_ready
+    bot.loop.create_task(random_drop_loop())
 
 # =======================
 # AUTO-RECONNECT RUN
@@ -335,4 +339,5 @@ def start_bot():
 if __name__ == "__main__":
     keep_alive()
     start_bot()
+
 
