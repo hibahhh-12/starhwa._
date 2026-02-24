@@ -54,29 +54,31 @@ def save_data(data):
     with open(DATA_FILE, "w") as f:
         json.dump(data, f, indent=4)
 
-data = load_data()
-
 # =======================
-# GITHUB AUTO-SAVE
+# GITHUB SYNC
 # =======================
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
 GITHUB_REPO = os.environ.get("GITHUB_REPO")  # e.g., hibahhh-12/starhwa
+
 g = Github(GITHUB_TOKEN)
 repo = g.get_repo(GITHUB_REPO)
 
 def push_json_to_github():
-    """Pushes local cards.json to GitHub"""
-    with open(DATA_FILE, "r") as f:
-        content = f.read()
     try:
+        with open(DATA_FILE, "r") as f:
+            content = f.read()
         file = repo.get_contents(DATA_FILE)
-        repo.update_file(path=DATA_FILE, message=f"Update by bot", content=content, sha=file.sha)
+        repo.update_file(
+            path=DATA_FILE,
+            message=f"Update by bot",
+            content=content,
+            sha=file.sha
+        )
         print("cards.json pushed to GitHub ✅")
     except Exception as e:
         print("Failed to push to GitHub:", e)
 
 def load_data_from_github():
-    """Pull the latest cards.json from GitHub and save locally"""
     try:
         file = repo.get_contents(DATA_FILE)
         content = file.decoded_content.decode()
@@ -86,8 +88,12 @@ def load_data_from_github():
         return json.loads(content)
     except Exception as e:
         print("Failed to load from GitHub, loading local file instead:", e)
-        return load_data()
+        if os.path.exists(DATA_FILE):
+            with open(DATA_FILE, "r") as f:
+                return json.load(f)
+        return {"cards": {}, "players": {}, "drop_channels": {}}
 
+# Load data
 data = load_data_from_github()
 
 # =======================
@@ -115,11 +121,10 @@ async def help(ctx):
     )
     embed.add_field(name="!start", value="Start your card journey", inline=False)
     embed.add_field(name="!balance", value="Check your coins", inline=False)
-    embed.add_field(name="!work", value="Earn coins + card (30s cooldown)", inline=False)
+    embed.add_field(name="!work", value="Play mini-games to earn coins & cards (30s cooldown)", inline=False)
     embed.add_field(name="!daily", value="Daily reward + card (24h)", inline=False)
     embed.add_field(name="!mycards", value="View your cards", inline=False)
-    embed.add_field(name="!setchannel #channel", value="Set random drop channel", inline=False)
-    embed.add_field(name="!leaderboard", value="View top coin holders", inline=False)
+    embed.add_field(name="!setchannel #channel", value="Set the drop channel for random card drops", inline=False)
     await ctx.send(embed=embed)
 
 # =======================
@@ -157,20 +162,6 @@ async def start(ctx):
     await ctx.send(embed=embed)
 
 # =======================
-# SET CHANNEL COMMAND
-# =======================
-@bot.command()
-async def setchannel(ctx, channel: discord.TextChannel):
-    data["drop_channels"][str(ctx.guild.id)] = channel.id
-    save_data(data)
-    push_json_to_github()
-    await ctx.send(embed=discord.Embed(
-        title="✅ Random Drop Channel Set!",
-        description=f"Channel set to {channel.mention}",
-        color=discord.Color.green()
-    ))
-
-# =======================
 # BALANCE COMMAND
 # =======================
 @bot.command()
@@ -183,7 +174,7 @@ async def balance(ctx):
     await ctx.send(f"💰 You have {coins} coins.")
 
 # =======================
-# WORK COMMAND
+# WORK COMMAND WITH MINI-GAMES
 # =======================
 @bot.command()
 async def work(ctx):
@@ -198,26 +189,85 @@ async def work(ctx):
         await ctx.send(f"⏳ Wait {remaining}s before working again.")
         return
 
-    earned = random.randint(50, 150)
-    data["players"][user_id]["coins"] += earned
+    mini_game = random.choice(["dice_roll", "treasure_hunt", "rps", "coin_flip", "lucky_number"])
+    coins_earned = 0
+    card_earned = None
+    description = ""
 
-    member = random.choice(list(data["cards"].keys()))
-    rarity = random.choice(list(data["cards"][member].keys()))
-    card_info = data["cards"][member][rarity]
-    card_name = f"{card_info['name']} ({rarity}★)"
-    data["players"][user_id]["cards"].append(card_name)
+    if mini_game == "dice_roll":
+        roll = random.randint(1, 6)
+        coins_earned = roll * 20
+        description = f"🎲 You rolled a **{roll}** and earned **{coins_earned} coins**!"
+    elif mini_game == "treasure_hunt":
+        found = random.choices(["coins", "card"], weights=[70, 30])[0]
+        if found == "coins":
+            coins_earned = random.randint(50, 200)
+            description = f"🗺️ You found a hidden stash with **{coins_earned} coins**!"
+        else:
+            card_member = random.choice(list(data["cards"].keys()))
+            rarity = random.choice(list(data["cards"][card_member].keys()))
+            card_info = data["cards"][card_member][rarity]
+            card_earned = f"{card_info['name']} ({rarity}★)"
+            data["players"][user_id]["cards"].append(card_earned)
+            description = f"🗺️ You found a hidden card: **{card_earned}**!"
+    elif mini_game == "rps":
+        bot_choice = random.choice(["rock", "paper", "scissors"])
+        user_choice = random.choice(["rock", "paper", "scissors"])
+        coins_earned = random.randint(50, 150)
+        description = f"✊ Rock-Paper-Scissors! You chose **{user_choice}**, bot chose **{bot_choice}**.\n"
+        if user_choice == bot_choice:
+            description += f"🤝 It's a tie! You earned **{coins_earned} coins**."
+        elif (user_choice == "rock" and bot_choice == "scissors") or \
+             (user_choice == "paper" and bot_choice == "rock") or \
+             (user_choice == "scissors" and bot_choice == "paper"):
+            coins_earned *= 2
+            description += f"🎉 You won! Coins doubled to **{coins_earned} coins**!"
+        else:
+            coins_earned = coins_earned // 2
+            description += f"😢 You lost! Coins halved to **{coins_earned} coins**."
+    elif mini_game == "coin_flip":
+        result = random.choice(["heads", "tails"])
+        guess = random.choice(["heads", "tails"])
+        coins_earned = random.randint(50, 150)
+        description = f"🪙 Coin flip! You guessed **{guess}**, coin landed on **{result}**.\n"
+        if guess == result:
+            coins_earned *= 2
+            description += f"🎉 Correct! You earned **{coins_earned} coins**!"
+        else:
+            coins_earned = coins_earned // 2
+            description += f"😢 Wrong guess! You earned only **{coins_earned} coins**."
+    elif mini_game == "lucky_number":
+        number = random.randint(1, 10)
+        guess = random.randint(1, 10)
+        coins_earned = random.randint(50, 150)
+        description = f"🔢 Lucky number! You guessed **{guess}**, lucky number is **{number}**.\n"
+        if guess == number:
+            coins_earned *= 3
+            description += f"🎊 Jackpot! Coins tripled to **{coins_earned} coins**!"
+        else:
+            description += f"💰 You earned **{coins_earned} coins** anyway."
+
+    data["players"][user_id]["coins"] += coins_earned
+
+    if card_earned is None and random.randint(1,3) == 1:  # 33% chance bonus card
+        card_member = random.choice(list(data["cards"].keys()))
+        rarity = random.choice(list(data["cards"][card_member].keys()))
+        card_info = data["cards"][card_member][rarity]
+        card_earned = f"{card_info['name']} ({rarity}★)"
+        data["players"][user_id]["cards"].append(card_earned)
+        description += f"\n🃏 Bonus card: **{card_earned}**!"
 
     save_data(data)
     push_json_to_github()
-
     work_cooldown[user_id] = now + 30
 
     embed = discord.Embed(
         title="💼 You worked!",
-        description=f"💰 +{earned} coins\n🃏 {card_name}",
+        description=description,
         color=discord.Color.purple()
     )
-    embed.set_image(url=card_info["image"])
+    if card_earned:
+        embed.set_image(url=card_info["image"])
     await ctx.send(embed=embed)
 
 # =======================
@@ -314,24 +364,15 @@ async def mycards(ctx):
             break
 
 # =======================
-# LEADERBOARD COMMAND
+# SET CHANNEL COMMAND
 # =======================
 @bot.command()
-async def leaderboard(ctx):
-    if not data["players"]:
-        await ctx.send("No players yet 💜")
-        return
-
-    # Sort players by coins
-    top_players = sorted(data["players"].items(), key=lambda x: x[1]["coins"], reverse=True)
-    embed = discord.Embed(title="🏆 Top Coin Holders", color=discord.Color.gold())
-
-    for i, (user_id, info) in enumerate(top_players[:10]):
-        user = ctx.guild.get_member(int(user_id))
-        name = user.display_name if user else f"User ID {user_id}"
-        embed.add_field(name=f"{i+1}. {name}", value=f"💰 {info['coins']} coins", inline=False)
-
-    await ctx.send(embed=embed)
+async def setchannel(ctx, channel: discord.TextChannel):
+    guild_id = str(ctx.guild.id)
+    data["drop_channels"][guild_id] = channel.id
+    save_data(data)
+    push_json_to_github()
+    await ctx.send(f"✅ Drop channel set to {channel.mention} for this server!")
 
 # =======================
 # RANDOM DROP LOOP
@@ -340,11 +381,12 @@ async def random_drop_loop():
     await bot.wait_until_ready()
     while not bot.is_closed():
         for guild in bot.guilds:
-            channel_id = data.get("drop_channels", {}).get(str(guild.id))
+            guild_id = str(guild.id)
+            channel_id = data["drop_channels"].get(guild_id)
             if not channel_id:
                 continue
 
-            channel = bot.get_channel(int(channel_id))
+            channel = bot.get_channel(channel_id)
             if not channel:
                 continue
 
@@ -377,7 +419,7 @@ async def random_drop_loop():
             embed.set_image(url=card_info["image"])
             await channel.send(embed=embed)
 
-        await asyncio.sleep(600)
+        await asyncio.sleep(600)  # every 10 mins
 
 # =======================
 # AUTO-RECONNECT RUN
