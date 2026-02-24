@@ -266,6 +266,53 @@ async def mycards(ctx):
             await message.remove_reaction(reaction, user)
         except asyncio.TimeoutError:
             break
+# =======================
+# RANDOM DROP LOOP
+# =======================
+async def random_drop_loop():
+    await bot.wait_until_ready()
+    while not bot.is_closed():
+        for guild in bot.guilds:
+            channel_id = DROP_CHANNELS.get(guild.id)
+            if not channel_id:
+                continue
+
+            channel = bot.get_channel(channel_id)
+            if not channel:
+                continue
+
+            players_in_guild = [
+                user_id for user_id in data["players"].keys()
+                if int(user_id) in [member.id for member in guild.members]
+            ]
+
+            if not players_in_guild:
+                continue
+
+            user_id = random.choice(players_in_guild)
+            member = guild.get_member(int(user_id))
+            if not member:
+                continue
+
+            card_member = random.choice(list(data["cards"].keys()))
+            rarity = random.choice(list(data["cards"][card_member].keys()))
+            card_info = data["cards"][card_member][rarity]
+            card_name = f"{card_info['name']} ({rarity}★)"
+
+            data["players"][user_id]["cards"].append(card_name)
+            save_data(data)
+
+            embed = discord.Embed(
+                title="🎴 Random Drop!",
+                description=f"{member.mention} received: **{card_name}**",
+                color=discord.Color.purple()
+            )
+            embed.set_image(url=card_info["image"])
+            await channel.send(embed=embed)
+
+        await asyncio.sleep(600)  # 10 minutes
+
+bot.loop.create_task(random_drop_loop())
 
 # =======================
 # AUTO-RECONNECT RUN
@@ -288,3 +335,4 @@ def start_bot():
 if __name__ == "__main__":
     keep_alive()
     start_bot()
+
