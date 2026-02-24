@@ -54,31 +54,29 @@ def save_data(data):
     with open(DATA_FILE, "w") as f:
         json.dump(data, f, indent=4)
 
+data = load_data()
+
 # =======================
-# GITHUB SYNC
+# GITHUB AUTO-SAVE
 # =======================
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
 GITHUB_REPO = os.environ.get("GITHUB_REPO")  # e.g., hibahhh-12/starhwa
-
 g = Github(GITHUB_TOKEN)
 repo = g.get_repo(GITHUB_REPO)
 
 def push_json_to_github():
+    """Pushes local cards.json to GitHub"""
     with open(DATA_FILE, "r") as f:
         content = f.read()
     try:
         file = repo.get_contents(DATA_FILE)
-        repo.update_file(
-            path=DATA_FILE,
-            message="Update by bot",
-            content=content,
-            sha=file.sha
-        )
+        repo.update_file(path=DATA_FILE, message=f"Update by bot", content=content, sha=file.sha)
         print("cards.json pushed to GitHub ✅")
     except Exception as e:
         print("Failed to push to GitHub:", e)
 
 def load_data_from_github():
+    """Pull the latest cards.json from GitHub and save locally"""
     try:
         file = repo.get_contents(DATA_FILE)
         content = file.decoded_content.decode()
@@ -90,7 +88,6 @@ def load_data_from_github():
         print("Failed to load from GitHub, loading local file instead:", e)
         return load_data()
 
-# Load data
 data = load_data_from_github()
 
 # =======================
@@ -98,12 +95,6 @@ data = load_data_from_github()
 # =======================
 work_cooldown = {}
 daily_cooldown = {}
-
-# =======================
-# DROP CHANNELS
-# =======================
-# Example: {guild_id: channel_id}
-DROP_CHANNELS = data.get("drop_channels", {})  # pulled from JSON
 
 # =======================
 # BOT EVENTS
@@ -124,10 +115,11 @@ async def help(ctx):
     )
     embed.add_field(name="!start", value="Start your card journey", inline=False)
     embed.add_field(name="!balance", value="Check your coins", inline=False)
-    embed.add_field(name="!work", value="Earn coins + mini-game (30s cooldown)", inline=False)
+    embed.add_field(name="!work", value="Earn coins + card (30s cooldown)", inline=False)
     embed.add_field(name="!daily", value="Daily reward + card (24h)", inline=False)
     embed.add_field(name="!mycards", value="View your cards", inline=False)
-    embed.add_field(name="!setchannel", value="Set the random drop channel for this server (Admin only)", inline=False)
+    embed.add_field(name="!setchannel #channel", value="Set random drop channel", inline=False)
+    embed.add_field(name="!leaderboard", value="View top coin holders", inline=False)
     await ctx.send(embed=embed)
 
 # =======================
@@ -165,6 +157,20 @@ async def start(ctx):
     await ctx.send(embed=embed)
 
 # =======================
+# SET CHANNEL COMMAND
+# =======================
+@bot.command()
+async def setchannel(ctx, channel: discord.TextChannel):
+    data["drop_channels"][str(ctx.guild.id)] = channel.id
+    save_data(data)
+    push_json_to_github()
+    await ctx.send(embed=discord.Embed(
+        title="✅ Random Drop Channel Set!",
+        description=f"Channel set to {channel.mention}",
+        color=discord.Color.green()
+    ))
+
+# =======================
 # BALANCE COMMAND
 # =======================
 @bot.command()
@@ -177,7 +183,7 @@ async def balance(ctx):
     await ctx.send(f"💰 You have {coins} coins.")
 
 # =======================
-# WORK COMMAND (with mini-game)
+# WORK COMMAND
 # =======================
 @bot.command()
 async def work(ctx):
@@ -195,35 +201,24 @@ async def work(ctx):
     earned = random.randint(50, 150)
     data["players"][user_id]["coins"] += earned
 
-    # ===== MINI GAME =====
-    number = random.randint(1, 5)
-    await ctx.send("🎮 Mini-game! Guess a number between 1 and 5. You have 10s!")
-
-    def check(m):
-        return m.author == ctx.author and m.content.isdigit() and 1 <= int(m.content) <= 5
-
-    try:
-        guess = await bot.wait_for("message", timeout=10.0, check=check)
-        guess_num = int(guess.content)
-        if guess_num == number:
-            extra = random.randint(50, 100)
-            earned += extra
-            data["players"][user_id]["coins"] += extra
-            # Extra card
-            member = random.choice(list(data["cards"].keys()))
-            rarity = random.choice(list(data["cards"][member].keys()))
-            card_info = data["cards"][member][rarity]
-            card_name = f"{card_info['name']} ({rarity}★)"
-            data["players"][user_id]["cards"].append(card_name)
-            await ctx.send(f"🎉 Correct! +{extra} bonus coins and extra card: {card_name}")
-        else:
-            await ctx.send(f"❌ Wrong! The number was {number}. You still earned {earned} coins.")
-    except asyncio.TimeoutError:
-        await ctx.send(f"⌛ Time's up! You still earned {earned} coins.")
+    member = random.choice(list(data["cards"].keys()))
+    rarity = random.choice(list(data["cards"][member].keys()))
+    card_info = data["cards"][member][rarity]
+    card_name = f"{card_info['name']} ({rarity}★)"
+    data["players"][user_id]["cards"].append(card_name)
 
     save_data(data)
     push_json_to_github()
+
     work_cooldown[user_id] = now + 30
+
+    embed = discord.Embed(
+        title="💼 You worked!",
+        description=f"💰 +{earned} coins\n🃏 {card_name}",
+        color=discord.Color.purple()
+    )
+    embed.set_image(url=card_info["image"])
+    await ctx.send(embed=embed)
 
 # =======================
 # DAILY COMMAND
@@ -319,17 +314,24 @@ async def mycards(ctx):
             break
 
 # =======================
-# SET DROP CHANNEL (ADMIN ONLY)
+# LEADERBOARD COMMAND
 # =======================
 @bot.command()
-@commands.has_permissions(administrator=True)
-async def setchannel(ctx):
-    channel_id = ctx.channel.id
-    DROP_CHANNELS[ctx.guild.id] = channel_id
-    data["drop_channels"] = DROP_CHANNELS
-    save_data(data)
-    push_json_to_github()
-    await ctx.send(f"✅ Random drop channel set to {ctx.channel.mention}")
+async def leaderboard(ctx):
+    if not data["players"]:
+        await ctx.send("No players yet 💜")
+        return
+
+    # Sort players by coins
+    top_players = sorted(data["players"].items(), key=lambda x: x[1]["coins"], reverse=True)
+    embed = discord.Embed(title="🏆 Top Coin Holders", color=discord.Color.gold())
+
+    for i, (user_id, info) in enumerate(top_players[:10]):
+        user = ctx.guild.get_member(int(user_id))
+        name = user.display_name if user else f"User ID {user_id}"
+        embed.add_field(name=f"{i+1}. {name}", value=f"💰 {info['coins']} coins", inline=False)
+
+    await ctx.send(embed=embed)
 
 # =======================
 # RANDOM DROP LOOP
@@ -338,10 +340,11 @@ async def random_drop_loop():
     await bot.wait_until_ready()
     while not bot.is_closed():
         for guild in bot.guilds:
-            channel_id = DROP_CHANNELS.get(guild.id)
+            channel_id = data.get("drop_channels", {}).get(str(guild.id))
             if not channel_id:
                 continue
-            channel = bot.get_channel(channel_id)
+
+            channel = bot.get_channel(int(channel_id))
             if not channel:
                 continue
 
@@ -374,7 +377,7 @@ async def random_drop_loop():
             embed.set_image(url=card_info["image"])
             await channel.send(embed=embed)
 
-        await asyncio.sleep(600)  # every 10 mins
+        await asyncio.sleep(600)
 
 # =======================
 # AUTO-RECONNECT RUN
