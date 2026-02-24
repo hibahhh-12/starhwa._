@@ -7,11 +7,11 @@ import random
 import asyncio
 import json
 import time
+from github import Github
 
 # =======================
 # KEEP ALIVE (Render)
 # =======================
-
 app = Flask('')
 
 @app.route('/')
@@ -28,7 +28,6 @@ def keep_alive():
 # =======================
 # BOT SETUP
 # =======================
-
 intents = discord.Intents.default()
 intents.message_content = True
 intents.reactions = True
@@ -43,12 +42,11 @@ bot = commands.Bot(
 # =======================
 # JSON STORAGE
 # =======================
-
 DATA_FILE = "cards.json"
 
 def load_data():
     if not os.path.exists(DATA_FILE):
-        return {"cards": {}, "players": {}, "drop_channels": {}}
+        return {"cards": {}, "players": {}}
     with open(DATA_FILE, "r") as f:
         return json.load(f)
 
@@ -58,24 +56,84 @@ def save_data(data):
 
 data = load_data()
 
-# Cooldowns
+# =======================
+# GITHUB AUTO-SAVE
+# =======================
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
+GITHUB_REPO = os.environ.get("GITHUB_REPO")  # e.g., hibahhh-12/starhwa
+
+g = Github(GITHUB_TOKEN)
+repo = g.get_repo(GITHUB_REPO)
+
+def push_json_to_github():
+    """Pushes local cards.json to GitHub"""
+    with open(DATA_FILE, "r") as f:
+        content = f.read()
+    try:
+        file = repo.get_contents(DATA_FILE)
+        repo.update_file(
+            path=DATA_FILE,
+            message=f"Update by bot",
+            content=content,
+            sha=file.sha
+        )
+        print("cards.json pushed to GitHub ✅")
+    except Exception as e:
+        print("Failed to push to GitHub:", e)
+# =======================
+# GITHUB SYNC ON STARTUP
+# =======================
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
+GITHUB_REPO = os.environ.get("GITHUB_REPO")  # e.g., hibahhh-12/starhwa
+
+from github import Github
+
+g = Github(GITHUB_TOKEN)
+repo = g.get_repo(GITHUB_REPO)
+
+def load_data_from_github():
+    """Pull the latest cards.json from GitHub and save locally"""
+    try:
+        file = repo.get_contents(DATA_FILE)
+        content = file.decoded_content.decode()
+        with open(DATA_FILE, "w") as f:
+            f.write(content)
+        print("Loaded cards.json from GitHub ✅")
+        return json.loads(content)
+    except Exception as e:
+        print("Failed to load from GitHub, loading local file instead:", e)
+        if os.path.exists(DATA_FILE):
+            with open(DATA_FILE, "r") as f:
+                return json.load(f)
+        return {"cards": {}, "players": {}}
+
+# Replace previous data load line
+data = load_data_from_github()
+# =======================
+# COOLDOWNS
+# =======================
 work_cooldown = {}
 daily_cooldown = {}
 
 # =======================
-# EVENTS
+# DROP CHANNELS (per server)
 # =======================
+# Example: {guild_id: channel_id}
+DROP_CHANNELS = {
+    123456789012345678: 987654321098765432  # replace with your server & channel IDs
+}
 
+# =======================
+# BOT EVENTS
+# =======================
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
-    # start the random drop loop inside on_ready
     bot.loop.create_task(random_drop_loop())
 
 # =======================
-# HELP
+# HELP COMMAND
 # =======================
-
 @bot.command()
 async def help(ctx):
     embed = discord.Embed(
@@ -87,13 +145,11 @@ async def help(ctx):
     embed.add_field(name="!work", value="Earn coins + card (30s cooldown)", inline=False)
     embed.add_field(name="!daily", value="Daily reward + card (24h)", inline=False)
     embed.add_field(name="!mycards", value="View your cards", inline=False)
-    embed.add_field(name="!setdrop #channel", value="Set the random drop channel (admin only)", inline=False)
     await ctx.send(embed=embed)
 
 # =======================
-# START
+# START COMMAND
 # =======================
-
 @bot.command()
 async def start(ctx):
     user_id = str(ctx.author.id)
@@ -105,13 +161,8 @@ async def start(ctx):
         await ctx.send("⚠ No cards found in cards.json!")
         return
 
-    # pick a random member and rarity 1 for starter
-    members = list(data["cards"].keys())
-    while True:
-        member = random.choice(members)
-        if "1" in data["cards"][member]:
-            rarity = "1"
-            break
+    member = random.choice(list(data["cards"].keys()))
+    rarity = random.choice(list(data["cards"][member].keys()))
     card_info = data["cards"][member][rarity]
 
     data["players"][user_id] = {
@@ -120,6 +171,7 @@ async def start(ctx):
     }
 
     save_data(data)
+    push_json_to_github()
 
     embed = discord.Embed(
         title="🎉 Welcome!",
@@ -130,9 +182,8 @@ async def start(ctx):
     await ctx.send(embed=embed)
 
 # =======================
-# BALANCE
+# BALANCE COMMAND
 # =======================
-
 @bot.command()
 async def balance(ctx):
     user_id = str(ctx.author.id)
@@ -143,9 +194,8 @@ async def balance(ctx):
     await ctx.send(f"💰 You have {coins} coins.")
 
 # =======================
-# WORK
+# WORK COMMAND
 # =======================
-
 @bot.command()
 async def work(ctx):
     user_id = str(ctx.author.id)
@@ -165,10 +215,11 @@ async def work(ctx):
     member = random.choice(list(data["cards"].keys()))
     rarity = random.choice(list(data["cards"][member].keys()))
     card_info = data["cards"][member][rarity]
-
     card_name = f"{card_info['name']} ({rarity}★)"
     data["players"][user_id]["cards"].append(card_name)
+
     save_data(data)
+    push_json_to_github()
 
     work_cooldown[user_id] = now + 30
 
@@ -181,9 +232,8 @@ async def work(ctx):
     await ctx.send(embed=embed)
 
 # =======================
-# DAILY
+# DAILY COMMAND
 # =======================
-
 @bot.command()
 async def daily(ctx):
     user_id = str(ctx.author.id)
@@ -205,10 +255,11 @@ async def daily(ctx):
     member = random.choice(list(data["cards"].keys()))
     rarity = random.choice(list(data["cards"][member].keys()))
     card_info = data["cards"][member][rarity]
-
     card_name = f"{card_info['name']} ({rarity}★)"
     data["players"][user_id]["cards"].append(card_name)
+
     save_data(data)
+    push_json_to_github()
 
     daily_cooldown[user_id] = now + 86400
 
@@ -221,9 +272,8 @@ async def daily(ctx):
     await ctx.send(embed=embed)
 
 # =======================
-# MY CARDS
+# MY CARDS COMMAND
 # =======================
-
 @bot.command()
 async def mycards(ctx):
     user_id = str(ctx.author.id)
@@ -237,7 +287,6 @@ async def mycards(ctx):
         return
 
     index = 0
-
     def create_embed(i):
         card_string = cards[i]
         member = card_string.split(" ")[0]
@@ -276,40 +325,31 @@ async def mycards(ctx):
             break
 
 # =======================
-# SET DROP CHANNEL
-# =======================
-
-@bot.command()
-@commands.has_permissions(administrator=True)
-async def setdrop(ctx, channel: discord.TextChannel):
-    data["drop_channels"][str(ctx.guild.id)] = channel.id
-    save_data(data)
-    await ctx.send(f"✅ Drops will now appear in {channel.mention}")
-
-# =======================
 # RANDOM DROP LOOP
 # =======================
-
 async def random_drop_loop():
     await bot.wait_until_ready()
     while not bot.is_closed():
         for guild in bot.guilds:
-            channel_id = data["drop_channels"].get(str(guild.id))
+            channel_id = DROP_CHANNELS.get(guild.id)
             if not channel_id:
                 continue
+
             channel = bot.get_channel(channel_id)
             if not channel:
                 continue
 
             players_in_guild = [
-                user_id for user_id in data["players"]
-                if guild.get_member(int(user_id))
+                user_id for user_id in data["players"].keys()
+                if int(user_id) in [member.id for member in guild.members]
             ]
             if not players_in_guild:
                 continue
 
             user_id = random.choice(players_in_guild)
             member = guild.get_member(int(user_id))
+            if not member:
+                continue
 
             card_member = random.choice(list(data["cards"].keys()))
             rarity = random.choice(list(data["cards"][card_member].keys()))
@@ -318,6 +358,7 @@ async def random_drop_loop():
 
             data["players"][user_id]["cards"].append(card_name)
             save_data(data)
+            push_json_to_github()
 
             embed = discord.Embed(
                 title="🎴 Random Drop!",
@@ -327,12 +368,11 @@ async def random_drop_loop():
             embed.set_image(url=card_info["image"])
             await channel.send(embed=embed)
 
-        await asyncio.sleep(600)  # 10 minutes
+        await asyncio.sleep(600)  # every 10 mins
 
 # =======================
 # AUTO-RECONNECT RUN
 # =======================
-
 def start_bot():
     TOKEN = os.environ.get("DISCORD_TOKEN")
     while True:
@@ -346,7 +386,6 @@ def start_bot():
 # =======================
 # MAIN
 # =======================
-
 if __name__ == "__main__":
     keep_alive()
     start_bot()
