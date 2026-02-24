@@ -46,7 +46,7 @@ DATA_FILE = "cards.json"
 
 def load_data():
     if not os.path.exists(DATA_FILE):
-        return {"cards": {}, "players": {}}
+        return {"cards": {}, "players": {}, "drop_channels": {}}
     with open(DATA_FILE, "r") as f:
         return json.load(f)
 
@@ -54,10 +54,8 @@ def save_data(data):
     with open(DATA_FILE, "w") as f:
         json.dump(data, f, indent=4)
 
-data = load_data()
-
 # =======================
-# GITHUB AUTO-SAVE
+# GITHUB SYNC
 # =======================
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
 GITHUB_REPO = os.environ.get("GITHUB_REPO")  # e.g., hibahhh-12/starhwa
@@ -66,33 +64,21 @@ g = Github(GITHUB_TOKEN)
 repo = g.get_repo(GITHUB_REPO)
 
 def push_json_to_github():
-    """Pushes local cards.json to GitHub"""
     with open(DATA_FILE, "r") as f:
         content = f.read()
     try:
         file = repo.get_contents(DATA_FILE)
         repo.update_file(
             path=DATA_FILE,
-            message=f"Update by bot",
+            message="Update by bot",
             content=content,
             sha=file.sha
         )
         print("cards.json pushed to GitHub ✅")
     except Exception as e:
         print("Failed to push to GitHub:", e)
-# =======================
-# GITHUB SYNC ON STARTUP
-# =======================
-GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
-GITHUB_REPO = os.environ.get("GITHUB_REPO")  # e.g., hibahhh-12/starhwa
-
-from github import Github
-
-g = Github(GITHUB_TOKEN)
-repo = g.get_repo(GITHUB_REPO)
 
 def load_data_from_github():
-    """Pull the latest cards.json from GitHub and save locally"""
     try:
         file = repo.get_contents(DATA_FILE)
         content = file.decoded_content.decode()
@@ -102,13 +88,11 @@ def load_data_from_github():
         return json.loads(content)
     except Exception as e:
         print("Failed to load from GitHub, loading local file instead:", e)
-        if os.path.exists(DATA_FILE):
-            with open(DATA_FILE, "r") as f:
-                return json.load(f)
-        return {"cards": {}, "players": {}}
+        return load_data()
 
-# Replace previous data load line
+# Load data
 data = load_data_from_github()
+
 # =======================
 # COOLDOWNS
 # =======================
@@ -116,12 +100,10 @@ work_cooldown = {}
 daily_cooldown = {}
 
 # =======================
-# DROP CHANNELS (per server)
+# DROP CHANNELS
 # =======================
 # Example: {guild_id: channel_id}
-DROP_CHANNELS = {
-    123456789012345678: 987654321098765432  # replace with your server & channel IDs
-}
+DROP_CHANNELS = data.get("drop_channels", {})  # pulled from JSON
 
 # =======================
 # BOT EVENTS
@@ -142,9 +124,10 @@ async def help(ctx):
     )
     embed.add_field(name="!start", value="Start your card journey", inline=False)
     embed.add_field(name="!balance", value="Check your coins", inline=False)
-    embed.add_field(name="!work", value="Earn coins + card (30s cooldown)", inline=False)
+    embed.add_field(name="!work", value="Earn coins + mini-game (30s cooldown)", inline=False)
     embed.add_field(name="!daily", value="Daily reward + card (24h)", inline=False)
     embed.add_field(name="!mycards", value="View your cards", inline=False)
+    embed.add_field(name="!setchannel", value="Set the random drop channel for this server (Admin only)", inline=False)
     await ctx.send(embed=embed)
 
 # =======================
@@ -194,7 +177,7 @@ async def balance(ctx):
     await ctx.send(f"💰 You have {coins} coins.")
 
 # =======================
-# WORK COMMAND
+# WORK COMMAND (with mini-game)
 # =======================
 @bot.command()
 async def work(ctx):
@@ -212,24 +195,35 @@ async def work(ctx):
     earned = random.randint(50, 150)
     data["players"][user_id]["coins"] += earned
 
-    member = random.choice(list(data["cards"].keys()))
-    rarity = random.choice(list(data["cards"][member].keys()))
-    card_info = data["cards"][member][rarity]
-    card_name = f"{card_info['name']} ({rarity}★)"
-    data["players"][user_id]["cards"].append(card_name)
+    # ===== MINI GAME =====
+    number = random.randint(1, 5)
+    await ctx.send("🎮 Mini-game! Guess a number between 1 and 5. You have 10s!")
+
+    def check(m):
+        return m.author == ctx.author and m.content.isdigit() and 1 <= int(m.content) <= 5
+
+    try:
+        guess = await bot.wait_for("message", timeout=10.0, check=check)
+        guess_num = int(guess.content)
+        if guess_num == number:
+            extra = random.randint(50, 100)
+            earned += extra
+            data["players"][user_id]["coins"] += extra
+            # Extra card
+            member = random.choice(list(data["cards"].keys()))
+            rarity = random.choice(list(data["cards"][member].keys()))
+            card_info = data["cards"][member][rarity]
+            card_name = f"{card_info['name']} ({rarity}★)"
+            data["players"][user_id]["cards"].append(card_name)
+            await ctx.send(f"🎉 Correct! +{extra} bonus coins and extra card: {card_name}")
+        else:
+            await ctx.send(f"❌ Wrong! The number was {number}. You still earned {earned} coins.")
+    except asyncio.TimeoutError:
+        await ctx.send(f"⌛ Time's up! You still earned {earned} coins.")
 
     save_data(data)
     push_json_to_github()
-
     work_cooldown[user_id] = now + 30
-
-    embed = discord.Embed(
-        title="💼 You worked!",
-        description=f"💰 +{earned} coins\n🃏 {card_name}",
-        color=discord.Color.purple()
-    )
-    embed.set_image(url=card_info["image"])
-    await ctx.send(embed=embed)
 
 # =======================
 # DAILY COMMAND
@@ -325,6 +319,19 @@ async def mycards(ctx):
             break
 
 # =======================
+# SET DROP CHANNEL (ADMIN ONLY)
+# =======================
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def setchannel(ctx):
+    channel_id = ctx.channel.id
+    DROP_CHANNELS[ctx.guild.id] = channel_id
+    data["drop_channels"] = DROP_CHANNELS
+    save_data(data)
+    push_json_to_github()
+    await ctx.send(f"✅ Random drop channel set to {ctx.channel.mention}")
+
+# =======================
 # RANDOM DROP LOOP
 # =======================
 async def random_drop_loop():
@@ -334,7 +341,6 @@ async def random_drop_loop():
             channel_id = DROP_CHANNELS.get(guild.id)
             if not channel_id:
                 continue
-
             channel = bot.get_channel(channel_id)
             if not channel:
                 continue
