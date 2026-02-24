@@ -53,7 +53,27 @@ daily_cooldown = {}
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
+    
+# =======================
+# JSON DATA STORAGE
+# =======================
 
+import json
+
+DATA_FILE = "cards.json"
+
+def load_data():
+    if not os.path.exists(DATA_FILE):
+        return {"cards": {}, "players": {}}
+    with open(DATA_FILE, "r") as f:
+        return json.load(f)
+
+def save_data(data):
+    with open(DATA_FILE, "w") as f:
+        json.dump(data, f, indent=4)
+
+# VERY IMPORTANT
+data = load_data()
 # =======================
 # HELP COMMAND
 # =======================
@@ -262,5 +282,6 @@ if __name__ == "__main__":
     keep_alive()
     TOKEN = os.environ.get("DISCORD_TOKEN")
     bot.run(TOKEN)
+
 
 
