@@ -1,29 +1,33 @@
-"cards": {
-  "Hongjoong": {
-    "1": { "name": "Hongjoong Rarity 1", "image": "https://cdn.discordapp.com/attachments/1470795513027887297/1475753983183425708/H1.png" }
-  },
-  "Seonghwa": {
-    "1": { "name": "Seonghwa Rarity 1", "image": "https://cdn.discordapp.com/attachments/1470795513027887297/1475760641506803733/S1.png" }
-  },
-  "Yunho": {
-    "1": { "name": "Yunho Rarity 1", "image": "https://cdn.discordapp.com/attachments/1470795513027887297/1475760789964062753/Y1.png" }
-  },
-  "Yeosang": {
-    "1": { "name": "Yeosang Rarity 1", "image": "https://cdn.discordapp.com/attachments/1470795513027887297/1475760588008460369/YS1.png" }
-  },
-  "San": {
-    "1": { "name": "San Rarity 1", "image": "https://cdn.discordapp.com/attachments/1470795513027887297/1475760833647874130/SN1.png" }
-  },
-  "Mingi": {
-    "1": { "name": "Mingi Rarity 1", "image": "https://cdn.discordapp.com/attachments/1470795513027887297/1475760539581026477/M1.png" }
-  },
-  "Wooyoung": {
-    "1": { "name": "Wooyoung Rarity 1", "image": "https://cdn.discordapp.com/attachments/1470795513027887297/1475760682040295554/W1.png" }
-  },
-  "Jongho": {
-    "1": { "name": "Jongho Rarity 1", "image": "https://cdn.discordapp.com/attachments/1470795513027887297/1475754962524045322/J1.png" }
-  }
+{
+  "cards": {
+    "Hongjoong": {
+      "1": { "name": "Hongjoong Rarity 1", "image": "https://cdn.discordapp.com/attachments/1470795513027887297/1475753983183425708/H1.png" }
+    },
+    "Seonghwa": {
+      "1": { "name": "Seonghwa Rarity 1", "image": "https://cdn.discordapp.com/attachments/1470795513027887297/1475760641506803733/S1.png" }
+    },
+    "Yunho": {
+      "1": { "name": "Yunho Rarity 1", "image": "https://cdn.discordapp.com/attachments/1470795513027887297/1475760789964062753/Y1.png" }
+    },
+    "Yeosang": {
+      "1": { "name": "Yeosang Rarity 1", "image": "https://cdn.discordapp.com/attachments/1470795513027887297/1475760588008460369/YS1.png" }
+    },
+    "San": {
+      "1": { "name": "San Rarity 1", "image": "https://cdn.discordapp.com/attachments/1470795513027887297/1475760833647874130/SN1.png" }
+    },
+    "Mingi": {
+      "1": { "name": "Mingi Rarity 1", "image": "https://cdn.discordapp.com/attachments/1470795513027887297/1475760539581026477/M1.png" }
+    },
+    "Wooyoung": {
+      "1": { "name": "Wooyoung Rarity 1", "image": "https://cdn.discordapp.com/attachments/1470795513027887297/1475760682040295554/W1.png" }
+    },
+    "Jongho": {
+      "1": { "name": "Jongho Rarity 1", "image": "https://cdn.discordapp.com/attachments/1470795513027887297/1475754962524045322/J1.png" }
+    },
+    "players": {},
+    "drop_channels": {}
 }
+
 
 
 
