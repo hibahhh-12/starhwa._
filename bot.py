@@ -48,7 +48,7 @@ DATA_FILE = "cards.json"
 
 def load_data():
     if not os.path.exists(DATA_FILE):
-        return {"cards": {}, "players": {}}
+        return {"cards": {}, "players": {}, "drop_channels": {}}
     with open(DATA_FILE, "r") as f:
         return json.load(f)
 
@@ -69,6 +69,8 @@ daily_cooldown = {}
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
+    # start the random drop loop inside on_ready
+    bot.loop.create_task(random_drop_loop())
 
 # =======================
 # HELP
@@ -85,6 +87,7 @@ async def help(ctx):
     embed.add_field(name="!work", value="Earn coins + card (30s cooldown)", inline=False)
     embed.add_field(name="!daily", value="Daily reward + card (24h)", inline=False)
     embed.add_field(name="!mycards", value="View your cards", inline=False)
+    embed.add_field(name="!setdrop #channel", value="Set the random drop channel (admin only)", inline=False)
     await ctx.send(embed=embed)
 
 # =======================
@@ -102,8 +105,13 @@ async def start(ctx):
         await ctx.send("⚠ No cards found in cards.json!")
         return
 
-    member = random.choice(list(data["cards"].keys()))
-    rarity = random.choice(list(data["cards"][member].keys()))
+    # pick a random member and rarity 1 for starter
+    members = list(data["cards"].keys())
+    while True:
+        member = random.choice(members)
+        if "1" in data["cards"][member]:
+            rarity = "1"
+            break
     card_info = data["cards"][member][rarity]
 
     data["players"][user_id] = {
@@ -266,33 +274,42 @@ async def mycards(ctx):
             await message.remove_reaction(reaction, user)
         except asyncio.TimeoutError:
             break
+
+# =======================
+# SET DROP CHANNEL
+# =======================
+
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def setdrop(ctx, channel: discord.TextChannel):
+    data["drop_channels"][str(ctx.guild.id)] = channel.id
+    save_data(data)
+    await ctx.send(f"✅ Drops will now appear in {channel.mention}")
+
 # =======================
 # RANDOM DROP LOOP
 # =======================
+
 async def random_drop_loop():
     await bot.wait_until_ready()
     while not bot.is_closed():
         for guild in bot.guilds:
-            channel_id = DROP_CHANNELS.get(guild.id)
+            channel_id = data["drop_channels"].get(str(guild.id))
             if not channel_id:
                 continue
-
             channel = bot.get_channel(channel_id)
             if not channel:
                 continue
 
             players_in_guild = [
-                user_id for user_id in data["players"].keys()
-                if int(user_id) in [member.id for member in guild.members]
+                user_id for user_id in data["players"]
+                if guild.get_member(int(user_id))
             ]
-
             if not players_in_guild:
                 continue
 
             user_id = random.choice(players_in_guild)
             member = guild.get_member(int(user_id))
-            if not member:
-                continue
 
             card_member = random.choice(list(data["cards"].keys()))
             rarity = random.choice(list(data["cards"][card_member].keys()))
@@ -311,12 +328,6 @@ async def random_drop_loop():
             await channel.send(embed=embed)
 
         await asyncio.sleep(600)  # 10 minutes
-
-@bot.event
-async def on_ready():
-    print(f"Logged in as {bot.user}")
-    # start the random drop loop inside on_ready
-    bot.loop.create_task(random_drop_loop())
 
 # =======================
 # AUTO-RECONNECT RUN
@@ -339,5 +350,3 @@ def start_bot():
 if __name__ == "__main__":
     keep_alive()
     start_bot()
-
-
