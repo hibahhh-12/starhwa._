@@ -1,442 +1,236 @@
 import discord
 from discord.ext import commands
+from discord import app_commands
 from flask import Flask
-import threading
-import os
-import random
-import asyncio
-import json
-import time
+import threading, os, random, asyncio, json, time, datetime
 from github import Github
 
 # =======================
-# KEEP ALIVE (Render)
+# 🌐 KEEP ALIVE & SYNC
 # =======================
 app = Flask('')
-
 @app.route('/')
-def home():
-    return "Bot is alive!"
-
-def run():
-    app.run(host='0.0.0.0', port=8080)
-
+def home(): return "Starhwa is Online! ✨"
+def run(): app.run(host='0.0.0.0', port=8080)
 def keep_alive():
     t = threading.Thread(target=run)
+    t.daemon = True
     t.start()
 
-# =======================
-# BOT SETUP
-# =======================
-intents = discord.Intents.default()
-intents.message_content = True
-intents.reactions = True
-intents.members = True
-
-bot = commands.Bot(
-    command_prefix="!",
-    intents=intents,
-    help_command=None
-)
-
-# =======================
-# JSON STORAGE
-# =======================
-DATA_FILE = "cards.json"
-
-def load_data():
-    if not os.path.exists(DATA_FILE):
-        return {"cards": {}, "players": {}, "drop_channels": {}}
-    with open(DATA_FILE, "r") as f:
-        return json.load(f)
-
-def save_data(data):
-    with open(DATA_FILE, "w") as f:
-        json.dump(data, f, indent=4)
-
-# =======================
-# GITHUB SYNC
-# =======================
+DATA_FILE = "starhwa_data.json"
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
-GITHUB_REPO = os.environ.get("GITHUB_REPO")  # e.g., hibahhh-12/starhwa
-
+GITHUB_REPO = os.environ.get("GITHUB_REPO")
 g = Github(GITHUB_TOKEN)
 repo = g.get_repo(GITHUB_REPO)
 
-def push_json_to_github():
+def save_data(data_obj):
     try:
-        with open(DATA_FILE, "r") as f:
-            content = f.read()
+        content = json.dumps(data_obj, indent=4)
+        with open(DATA_FILE, "w") as f: f.write(content)
         file = repo.get_contents(DATA_FILE)
-        repo.update_file(
-            path=DATA_FILE,
-            message=f"Update by bot",
-            content=content,
-            sha=file.sha
-        )
-        print("cards.json pushed to GitHub ✅")
-    except Exception as e:
-        print("Failed to push to GitHub:", e)
+        repo.update_file(path=DATA_FILE, message="Starhwa Update", content=content, sha=file.sha)
+    except Exception as e: print(f"Sync Error: {e}")
 
-def load_data_from_github():
+def load_data():
     try:
         file = repo.get_contents(DATA_FILE)
-        content = file.decoded_content.decode()
-        with open(DATA_FILE, "w") as f:
-            f.write(content)
-        print("Loaded cards.json from GitHub ✅")
-        return json.loads(content)
-    except Exception as e:
-        print("Failed to load from GitHub, loading local file instead:", e)
-        if os.path.exists(DATA_FILE):
-            with open(DATA_FILE, "r") as f:
-                return json.load(f)
-        return {"cards": {}, "players": {}, "drop_channels": {}}
+        return json.loads(file.decoded_content.decode())
+    except: 
+        # Fallback if file is empty
+        return {"cards": {}, "players": {}, "guilds": {}, "market": []}
 
-# Load data
-data = load_data_from_github()
+data = load_data()
 
 # =======================
-# COOLDOWNS
+# 🤖 BOT SETUP
 # =======================
-work_cooldown = {}
-daily_cooldown = {}
+class StarhwaBot(commands.Bot):
+    def __init__(self):
+        super().__init__(command_prefix="!", intents=discord.Intents.all())
+    async def setup_hook(self):
+        await self.tree.sync()
+        print(f"Starhwa Slash Commands Synced!")
 
-# =======================
-# BOT EVENTS
-# =======================
-@bot.event
-async def on_ready():
-    print(f"Logged in as {bot.user}")
-    bot.loop.create_task(random_drop_loop())
+bot = StarhwaBot()
 
 # =======================
-# HELP COMMAND
+# 🍱 UI COMPONENTS
 # =======================
-@bot.command()
-async def help(ctx):
-    embed = discord.Embed(
-        title="📜 Commands",
-        color=discord.Color.purple()
-    )
-    embed.add_field(name="!start", value="Start your card journey", inline=False)
-    embed.add_field(name="!balance", value="Check your coins", inline=False)
-    embed.add_field(name="!work", value="Play mini-games to earn coins & cards (30s cooldown)", inline=False)
-    embed.add_field(name="!daily", value="Daily reward + card (24h)", inline=False)
-    embed.add_field(name="!mycards", value="View your cards", inline=False)
-    embed.add_field(name="!setchannel #channel", value="Set the drop channel for random card drops", inline=False)
-    await ctx.send(embed=embed)
+class DropView(discord.ui.View):
+    def __init__(self, cards_to_show):
+        super().__init__(timeout=60)
+        self.cards = cards_to_show
+        self.claimed = [False, False, False]
 
-# =======================
-# START COMMAND
-# =======================
-@bot.command()
-async def start(ctx):
-    user_id = str(ctx.author.id)
-    if user_id in data["players"]:
-        await ctx.send("You already started 💜")
-        return
+    async def claim(self, interaction, idx):
+        uid = str(interaction.user.id)
+        if uid not in data["players"]: 
+            return await interaction.response.send_message("Use `/start` first!", ephemeral=True)
+        if self.claimed[idx]: 
+            return await interaction.response.send_message("This star has already been claimed!", ephemeral=True)
+        
+        card = self.cards[idx]
+        data["players"][uid]["cards"].append(card)
+        self.claimed[idx] = True
+        save_data(data)
+        
+        # Wishlist Check
+        for wish_uid, u_info in data["players"].items():
+            if any(w.lower() in card['name'].lower() for w in u_info.get("wishlist", [])):
+                if wish_uid != uid: await interaction.channel.send(f"🔔 <@{wish_uid}>, your wish **{card['name']}** dropped!")
 
-    if not data["cards"]:
-        await ctx.send("⚠ No cards found in cards.json!")
-        return
+        await interaction.response.send_message(f"✨ **{interaction.user.name}** caught **{card['name']}**!")
 
-    member = random.choice(list(data["cards"].keys()))
-    rarity = random.choice(list(data["cards"][member].keys()))
-    card_info = data["cards"][member][rarity]
+    @discord.ui.button(label="1", style=discord.ButtonStyle.secondary)
+    async def b1(self, i, b): await self.claim(i, 0)
+    @discord.ui.button(label="2", style=discord.ButtonStyle.secondary)
+    async def b2(self, i, b): await self.claim(i, 1)
+    @discord.ui.button(label="3", style=discord.ButtonStyle.secondary)
+    async def b3(self, i, b): await self.claim(i, 2)
 
-    data["players"][user_id] = {
-        "coins": 500,
-        "cards": [f"{card_info['name']} ({rarity}★)"]
-    }
+class TradeView(discord.ui.View):
+    def __init__(self, s, r, s_c, r_c):
+        super().__init__(timeout=180)
+        self.s, self.r, self.s_c, self.r_c = s, r, s_c, r_c
+        self.s_ok, self.r_ok = False, False
 
-    save_data(data)
-    push_json_to_github()
-
-    embed = discord.Embed(
-        title="🎉 Welcome!",
-        description=f"💰 500 coins\n🃏 Starter: {card_info['name']} ({rarity}★)",
-        color=discord.Color.purple()
-    )
-    embed.set_image(url=card_info["image"])
-    await ctx.send(embed=embed)
-
-# =======================
-# BALANCE COMMAND
-# =======================
-@bot.command()
-async def balance(ctx):
-    user_id = str(ctx.author.id)
-    if user_id not in data["players"]:
-        await ctx.send("Use `!start` first 💜")
-        return
-    coins = data["players"][user_id]["coins"]
-    await ctx.send(f"💰 You have {coins} coins.")
-
-# =======================
-# WORK COMMAND WITH MINI-GAMES
-# =======================
-@bot.command()
-async def work(ctx):
-    user_id = str(ctx.author.id)
-    if user_id not in data["players"]:
-        await ctx.send("Use `!start` first 💜")
-        return
-
-    now = asyncio.get_event_loop().time()
-    if user_id in work_cooldown and work_cooldown[user_id] > now:
-        remaining = int(work_cooldown[user_id] - now)
-        await ctx.send(f"⏳ Wait {remaining}s before working again.")
-        return
-
-    mini_game = random.choice(["dice_roll", "treasure_hunt", "rps", "coin_flip", "lucky_number"])
-    coins_earned = 0
-    card_earned = None
-    description = ""
-
-    if mini_game == "dice_roll":
-        roll = random.randint(1, 6)
-        coins_earned = roll * 20
-        description = f"🎲 You rolled a **{roll}** and earned **{coins_earned} coins**!"
-    elif mini_game == "treasure_hunt":
-        found = random.choices(["coins", "card"], weights=[70, 30])[0]
-        if found == "coins":
-            coins_earned = random.randint(50, 200)
-            description = f"🗺️ You found a hidden stash with **{coins_earned} coins**!"
-        else:
-            card_member = random.choice(list(data["cards"].keys()))
-            rarity = random.choice(list(data["cards"][card_member].keys()))
-            card_info = data["cards"][card_member][rarity]
-            card_earned = f"{card_info['name']} ({rarity}★)"
-            data["players"][user_id]["cards"].append(card_earned)
-            description = f"🗺️ You found a hidden card: **{card_earned}**!"
-    elif mini_game == "rps":
-        bot_choice = random.choice(["rock", "paper", "scissors"])
-        user_choice = random.choice(["rock", "paper", "scissors"])
-        coins_earned = random.randint(50, 150)
-        description = f"✊ Rock-Paper-Scissors! You chose **{user_choice}**, bot chose **{bot_choice}**.\n"
-        if user_choice == bot_choice:
-            description += f"🤝 It's a tie! You earned **{coins_earned} coins**."
-        elif (user_choice == "rock" and bot_choice == "scissors") or \
-             (user_choice == "paper" and bot_choice == "rock") or \
-             (user_choice == "scissors" and bot_choice == "paper"):
-            coins_earned *= 2
-            description += f"🎉 You won! Coins doubled to **{coins_earned} coins**!"
-        else:
-            coins_earned = coins_earned // 2
-            description += f"😢 You lost! Coins halved to **{coins_earned} coins**."
-    elif mini_game == "coin_flip":
-        result = random.choice(["heads", "tails"])
-        guess = random.choice(["heads", "tails"])
-        coins_earned = random.randint(50, 150)
-        description = f"🪙 Coin flip! You guessed **{guess}**, coin landed on **{result}**.\n"
-        if guess == result:
-            coins_earned *= 2
-            description += f"🎉 Correct! You earned **{coins_earned} coins**!"
-        else:
-            coins_earned = coins_earned // 2
-            description += f"😢 Wrong guess! You earned only **{coins_earned} coins**."
-    elif mini_game == "lucky_number":
-        number = random.randint(1, 10)
-        guess = random.randint(1, 10)
-        coins_earned = random.randint(50, 150)
-        description = f"🔢 Lucky number! You guessed **{guess}**, lucky number is **{number}**.\n"
-        if guess == number:
-            coins_earned *= 3
-            description += f"🎊 Jackpot! Coins tripled to **{coins_earned} coins**!"
-        else:
-            description += f"💰 You earned **{coins_earned} coins** anyway."
-
-    data["players"][user_id]["coins"] += coins_earned
-
-    if card_earned is None and random.randint(1,3) == 1:  # 33% chance bonus card
-        card_member = random.choice(list(data["cards"].keys()))
-        rarity = random.choice(list(data["cards"][card_member].keys()))
-        card_info = data["cards"][card_member][rarity]
-        card_earned = f"{card_info['name']} ({rarity}★)"
-        data["players"][user_id]["cards"].append(card_earned)
-        description += f"\n🃏 Bonus card: **{card_earned}**!"
-
-    save_data(data)
-    push_json_to_github()
-    work_cooldown[user_id] = now + 30
-
-    embed = discord.Embed(
-        title="💼 You worked!",
-        description=description,
-        color=discord.Color.purple()
-    )
-    if card_earned:
-        embed.set_image(url=card_info["image"])
-    await ctx.send(embed=embed)
-
-# =======================
-# DAILY COMMAND
-# =======================
-@bot.command()
-async def daily(ctx):
-    user_id = str(ctx.author.id)
-    if user_id not in data["players"]:
-        await ctx.send("Use `!start` first 💜")
-        return
-
-    now = asyncio.get_event_loop().time()
-    if user_id in daily_cooldown and daily_cooldown[user_id] > now:
-        remaining = int(daily_cooldown[user_id] - now)
-        hours = remaining // 3600
-        minutes = (remaining % 3600) // 60
-        await ctx.send(f"⏳ Come back in {hours}h {minutes}m.")
-        return
-
-    reward = 500
-    data["players"][user_id]["coins"] += reward
-
-    member = random.choice(list(data["cards"].keys()))
-    rarity = random.choice(list(data["cards"][member].keys()))
-    card_info = data["cards"][member][rarity]
-    card_name = f"{card_info['name']} ({rarity}★)"
-    data["players"][user_id]["cards"].append(card_name)
-
-    save_data(data)
-    push_json_to_github()
-
-    daily_cooldown[user_id] = now + 86400
-
-    embed = discord.Embed(
-        title="🎁 Daily Reward!",
-        description=f"💰 +{reward} coins\n🃏 {card_name}",
-        color=discord.Color.purple()
-    )
-    embed.set_image(url=card_info["image"])
-    await ctx.send(embed=embed)
-
-# =======================
-# MY CARDS COMMAND
-# =======================
-@bot.command()
-async def mycards(ctx):
-    user_id = str(ctx.author.id)
-    if user_id not in data["players"]:
-        await ctx.send("Use `!start` first 💜")
-        return
-
-    cards = data["players"][user_id]["cards"]
-    if not cards:
-        await ctx.send("You have no cards yet 💜")
-        return
-
-    index = 0
-    def create_embed(i):
-        card_string = cards[i]
-        member = card_string.split(" ")[0]
-        rarity = card_string.split("(")[1].split("★")[0]
-        card_data = data["cards"].get(member, {}).get(rarity)
-
-        embed = discord.Embed(
-            title=f"🃏 {card_string}",
-            color=discord.Color.purple()
-        )
-        if card_data:
-            embed.set_image(url=card_data["image"])
-        embed.set_footer(text=f"{i+1}/{len(cards)}")
-        return embed
-
-    message = await ctx.send(embed=create_embed(index))
-    if len(cards) == 1:
-        return
-
-    await message.add_reaction("⬅️")
-    await message.add_reaction("➡️")
-
-    def check(reaction, user):
-        return user == ctx.author and str(reaction.emoji) in ["⬅️", "➡️"] and reaction.message.id == message.id
-
-    while True:
-        try:
-            reaction, user = await bot.wait_for("reaction_add", timeout=120, check=check)
-            if str(reaction.emoji) == "➡️":
-                index = (index + 1) % len(cards)
-            else:
-                index = (index - 1) % len(cards)
-            await message.edit(embed=create_embed(index))
-            await message.remove_reaction(reaction, user)
-        except asyncio.TimeoutError:
-            break
-
-# =======================
-# SET CHANNEL COMMAND
-# =======================
-@bot.command()
-async def setchannel(ctx, channel: discord.TextChannel):
-    guild_id = str(ctx.guild.id)
-    data["drop_channels"][guild_id] = channel.id
-    save_data(data)
-    push_json_to_github()
-    await ctx.send(f"✅ Drop channel set to {channel.mention} for this server!")
-
-# =======================
-# RANDOM DROP LOOP
-# =======================
-async def random_drop_loop():
-    await bot.wait_until_ready()
-    while not bot.is_closed():
-        for guild in bot.guilds:
-            guild_id = str(guild.id)
-            channel_id = data["drop_channels"].get(guild_id)
-            if not channel_id:
-                continue
-
-            channel = bot.get_channel(channel_id)
-            if not channel:
-                continue
-
-            players_in_guild = [
-                user_id for user_id in data["players"].keys()
-                if int(user_id) in [member.id for member in guild.members]
-            ]
-            if not players_in_guild:
-                continue
-
-            user_id = random.choice(players_in_guild)
-            member = guild.get_member(int(user_id))
-            if not member:
-                continue
-
-            card_member = random.choice(list(data["cards"].keys()))
-            rarity = random.choice(list(data["cards"][card_member].keys()))
-            card_info = data["cards"][card_member][rarity]
-            card_name = f"{card_info['name']} ({rarity}★)"
-
-            data["players"][user_id]["cards"].append(card_name)
+    @discord.ui.button(label="Confirm Trade", style=discord.ButtonStyle.green)
+    async def ok(self, i, b):
+        if i.user.id == self.s.id: self.s_ok = True
+        elif i.user.id == self.r.id: self.r_ok = True
+        else: return await i.response.send_message("Not your trade!", ephemeral=True)
+        
+        if self.s_ok and self.r_ok:
+            data["players"][str(self.s.id)]["cards"].remove(self.s_c)
+            data["players"][str(self.r.id)]["cards"].remove(self.r_c)
+            data["players"][str(self.s.id)]["cards"].append(self.r_c)
+            data["players"][str(self.r.id)]["cards"].append(self.s_c)
             save_data(data)
-            push_json_to_github()
-
-            embed = discord.Embed(
-                title="🎴 Random Drop!",
-                description=f"{member.mention} received: **{card_name}**",
-                color=discord.Color.purple()
-            )
-            embed.set_image(url=card_info["image"])
-            await channel.send(embed=embed)
-
-        await asyncio.sleep(600)  # every 10 mins
+            await i.message.edit(content="✅ Trade Complete!", view=None)
+        await i.response.send_message("Confirmed!", ephemeral=True)
 
 # =======================
-# AUTO-RECONNECT RUN
+# ⚔️ SLASH COMMANDS
 # =======================
-def start_bot():
-    TOKEN = os.environ.get("DISCORD_TOKEN")
-    while True:
-        try:
-            bot.run(TOKEN)
-        except Exception as e:
-            print("Bot crashed:", e)
-            print("Restarting in 5 seconds...")
-            time.sleep(5)
+
+@bot.tree.command(name="start", description="Begin your Starhwa journey")
+async def start(interaction: discord.Interaction):
+    uid = str(interaction.user.id)
+    if uid in data["players"]: return await interaction.response.send_message("You've already started!")
+    data["players"][uid] = {
+        "beads": 500, "cards": [], "wishlist": [], "fav": None, 
+        "daily": 0, "work": 0, "joined": str(datetime.date.today())
+    }
+    save_data(data)
+    await interaction.response.send_message("✨ Welcome to **Starhwa**. Inspired by Seonghwa, you can now collect ATEEZ!")
+
+@bot.tree.command(name="drop", description="Spawn 3 random ATEEZ idols")
+async def drop(interaction: discord.Interaction):
+    gid = str(interaction.guild.id)
+    chan_id = data["guilds"].get(gid, {}).get("drop_channel")
+    if chan_id and interaction.channel_id != chan_id:
+        return await interaction.response.send_message(f"❌ Please use the drop channel: <#{chan_id}>", ephemeral=True)
+
+    dropped_cards = []
+    embed = discord.Embed(title="🌌 Starhwa Cosmic Drop", description="Claim your favorite ATEEZ member!", color=0x2b2d31)
+    
+    # Selection logic using YOUR JSON structure
+    for i in range(3):
+        member_name = random.choice(list(data["cards"].keys()))
+        rarity_level = random.choice(list(data["cards"][member_name].keys()))
+        card_data = data["cards"][member_name][rarity_level]
+        
+        # Save necessary info for claiming
+        card_obj = {
+            "name": card_data["name"],
+            "member": member_name,
+            "rarity": rarity_level,
+            "image": card_data["image"]
+        }
+        dropped_cards.append(card_obj)
+        embed.add_field(name=f"Slot {i+1}", value=f"**{card_data['name']}**\n{rarity_level}★", inline=True)
+    
+    embed.set_image(url=dropped_cards[0]["image"])
+    await interaction.response.send_message(embed=embed, view=DropView(dropped_cards))
+
+@bot.tree.command(name="inventory", description="View your card binder")
+async def inventory(interaction: discord.Interaction, idol: str = None):
+    uid = str(interaction.user.id)
+    if uid not in data["players"]: return await interaction.response.send_message("Run `/start`!")
+    
+    cards = data["players"][uid]["cards"]
+    if idol:
+        cards = [c for c in cards if idol.lower() in c['member'].lower() or idol.lower() in c['name'].lower()]
+    
+    inv_text = "\n".join([f"• **{c['name']}** ({c['rarity']}★)" for c in cards[:15]])
+    embed = discord.Embed(title=f"🎴 {interaction.user.name}'s Binder", description=inv_text or "No cards found.", color=0x9b59b6)
+    embed.set_footer(text=f"Total: {len(cards)} cards")
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="view", description="View a card in high definition")
+async def view(interaction: discord.Interaction, card_name: str):
+    uid = str(interaction.user.id)
+    card = next((c for c in data["players"][uid]["cards"] if card_name.lower() in c['name'].lower()), None)
+    if not card: return await interaction.response.send_message("Card not found in your inventory!", ephemeral=True)
+    
+    embed = discord.Embed(title=card['name'], color=0xf1c40f)
+    embed.set_image(url=card['image'])
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="work", description="Play RPS for Beads")
+async def work(interaction: discord.Interaction):
+    uid = str(interaction.user.id)
+    now = time.time()
+    if now - data["players"][uid].get("work", 0) < 1800:
+        return await interaction.response.send_message("⏳ Seonghwa says rest! 30m cooldown.", ephemeral=True)
+
+    await interaction.response.send_message("✊ **Rock, Paper, or Scissors?**")
+    def check(m): return m.author == interaction.user and m.content.lower() in ["rock", "paper", "scissors"]
+    try:
+        msg = await bot.wait_for("message", timeout=20, check=check)
+        bot_choice = random.choice(["rock", "paper", "scissors"])
+        user_choice = msg.content.lower()
+        
+        if user_choice == bot_choice: res, beads = "🤝 Tie!", 150
+        elif (user_choice=="rock" and bot_choice=="scissors") or (user_choice=="paper" and bot_choice=="rock") or (user_choice=="scissors" and bot_choice=="paper"):
+            res, beads = "🏆 Win!", 400
+        else: res, beads = "💀 Lose!", 50
+
+        data["players"][uid]["beads"] += beads
+        data["players"][uid]["work"] = now
+        save_data(data)
+        await interaction.followup.send(f"**{res}** Bot chose {bot_choice}. Earned 💰 {beads} Beads!")
+    except asyncio.TimeoutError: await interaction.followup.send("⏰ Too slow!")
+
+@bot.tree.command(name="setchannel", description="Admin: Set drop channel")
+@app_commands.checks.has_permissions(manage_channels=True)
+async def setchannel(interaction: discord.Interaction, channel: discord.TextChannel):
+    gid = str(interaction.guild.id)
+    if gid not in data["guilds"]: data["guilds"][gid] = {}
+    data["guilds"][gid]["drop_channel"] = channel.id
+    save_data(data)
+    await interaction.response.send_message(f"✅ Drops set to {channel.mention}!")
+
+@bot.tree.command(name="profile", description="Check your stats")
+async def profile(interaction: discord.Interaction, user: discord.Member = None):
+    user = user or interaction.user
+    p = data["players"].get(str(user.id))
+    if not p: return await interaction.response.send_message("User not registered!")
+    embed = discord.Embed(title=f"👤 {user.name}'s Profile", color=0x3498db)
+    embed.add_field(name="💰 Beads", value=p["beads"])
+    embed.add_field(name="🎴 Cards", value=len(p["cards"]))
+    embed.set_thumbnail(url=user.avatar.url if user.avatar else None)
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="leaderboard", description="Rich list")
+async def leaderboard(interaction: discord.Interaction):
+    top = sorted(data["players"].items(), key=lambda x: x[1].get("beads", 0), reverse=True)[:10]
+    lb = "\n".join([f"**#{i+1}** <@{k}> — 💰 {v['beads']}" for i, (k,v) in enumerate(top)])
+    await interaction.response.send_message(embed=discord.Embed(title="🏆 Global Leaderboard", description=lb or "No users yet!"))
 
 # =======================
-# MAIN
+# 🚀 RUN STARHWA
 # =======================
 if __name__ == "__main__":
     keep_alive()
-    start_bot()
+    bot.run(os.environ.get("DISCORD_TOKEN"))
