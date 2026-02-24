@@ -17,7 +17,7 @@ def keep_alive():
     t.daemon = True
     t.start()
 
-DATA_FILE = "starhwa_data.json"
+DATA_FILE = "cards.json"
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
 GITHUB_REPO = os.environ.get("GITHUB_REPO")
 g = Github(GITHUB_TOKEN)
@@ -234,3 +234,4 @@ async def leaderboard(interaction: discord.Interaction):
 if __name__ == "__main__":
     keep_alive()
     bot.run(os.environ.get("DISCORD_TOKEN"))
+
