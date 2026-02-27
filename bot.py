@@ -19,11 +19,11 @@ def home():
 return "Bot is alive!"
 
 def run():
-    app.run(host='0.0.0.0', port=8080)
+app.run(host='0.0.0.0', port=8080)
 
 def keep_alive():
-    t = threading.Thread(target=run)
-    t.start()
+t = threading.Thread(target=run)
+t.start()
 
 # =======================
 # BOT SETUP
@@ -34,9 +34,9 @@ intents.reactions = True
 intents.members = True
 
 bot = commands.Bot(
-    command_prefix="!",
-    intents=intents,
-    help_command=None
+command_prefix="!",
+intents=intents,
+help_command=None
 )
 
 # =======================
@@ -440,4 +440,5 @@ def start_bot():
 if __name__ == "__main__":
     keep_alive()
     start_bot()
+
 
