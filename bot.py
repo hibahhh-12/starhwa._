@@ -3,10 +3,13 @@ from discord.ext import commands
 from flask import Flask
 import threading
 import os
+import asyncio
+import json
 import time
+import random
 
 # =======================
-# KEEP ALIVE (Render)
+# FLASK KEEP-ALIVE (Render + Uptime Robot)
 # =======================
 app = Flask(__name__)
 
@@ -22,6 +25,15 @@ def keep_alive():
     t.start()
 
 # =======================
+# DISCORD TOKEN CLEANUP
+# =======================
+TOKEN = os.environ.get("DISCORD_TOKEN", "").strip()  # removes spaces/newlines
+if not TOKEN:
+    print("❌ ERROR: DISCORD_TOKEN not found!")
+    exit()
+print(f"🔑 Token length after strip: {len(TOKEN)}")  # should be ~59–60
+
+# =======================
 # BOT SETUP
 # =======================
 intents = discord.Intents.default()
@@ -29,14 +41,34 @@ intents.message_content = True
 intents.members = True
 intents.reactions = True
 
-bot = commands.Bot(
-    command_prefix="!",
-    intents=intents,
-    help_command=None
-)
+bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 
 # =======================
-# EVENTS
+# JSON STORAGE (Safe)
+# =======================
+DATA_FILE = "cards.json"
+
+def load_data():
+    try:
+        if not os.path.exists(DATA_FILE):
+            return {"cards": {}, "players": {}, "drop_channels": {}}
+        with open(DATA_FILE, "r") as f:
+            return json.load(f)
+    except Exception as e:
+        print("❌ Error loading data:", e)
+        return {"cards": {}, "players": {}, "drop_channels": {}}
+
+def save_data(data):
+    try:
+        with open(DATA_FILE, "w") as f:
+            json.dump(data, f, indent=4)
+    except Exception as e:
+        print("❌ Error saving data:", e)
+
+data = load_data()
+
+# =======================
+# BOT EVENTS
 # =======================
 @bot.event
 async def on_ready():
@@ -50,15 +82,9 @@ async def ping(ctx):
     await ctx.send("Pong!")
 
 # =======================
-# AUTO-RECONNECT WITH DEBUG
+# AUTO-RESTART LOOP
 # =======================
 def start_bot():
-    TOKEN = os.environ.get("DISCORD_TOKEN")
-    if not TOKEN:
-        print("❌ ERROR: DISCORD_TOKEN not found in environment variables.")
-        return
-    print(f"🔑 Token length read: {len(TOKEN)}")  # Debug: confirm token is loaded
-
     while True:
         try:
             print("⏳ Attempting to start bot...")
