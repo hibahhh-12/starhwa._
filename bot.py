@@ -4,12 +4,10 @@ from flask import Flask
 import threading
 import os
 import asyncio
-import json
 import time
-import random
 
 # =======================
-# FLASK KEEP-ALIVE (Render + Uptime Robot)
+# FLASK KEEP-ALIVE
 # =======================
 app = Flask(__name__)
 
@@ -25,13 +23,15 @@ def keep_alive():
     t.start()
 
 # =======================
-# DISCORD TOKEN CLEANUP
+# DISCORD TOKEN + CLEANUP
 # =======================
-TOKEN = os.environ.get("DISCORD_TOKEN", "").strip()  # removes spaces/newlines
+TOKEN = os.environ.get("DISCORD_TOKEN", "").replace("\u00A0","").strip()
+
 if not TOKEN:
-    print("❌ ERROR: DISCORD_TOKEN not found!")
+    print("❌ ERROR: DISCORD_TOKEN not found or empty!")
     exit()
-print(f"🔑 Token length after strip: {len(TOKEN)}")  # should be ~59–60
+
+print(f"🔑 Token length after cleanup: {len(TOKEN)}")
 
 # =======================
 # BOT SETUP
@@ -42,30 +42,6 @@ intents.members = True
 intents.reactions = True
 
 bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
-
-# =======================
-# JSON STORAGE (Safe)
-# =======================
-DATA_FILE = "cards.json"
-
-def load_data():
-    try:
-        if not os.path.exists(DATA_FILE):
-            return {"cards": {}, "players": {}, "drop_channels": {}}
-        with open(DATA_FILE, "r") as f:
-            return json.load(f)
-    except Exception as e:
-        print("❌ Error loading data:", e)
-        return {"cards": {}, "players": {}, "drop_channels": {}}
-
-def save_data(data):
-    try:
-        with open(DATA_FILE, "w") as f:
-            json.dump(data, f, indent=4)
-    except Exception as e:
-        print("❌ Error saving data:", e)
-
-data = load_data()
 
 # =======================
 # BOT EVENTS
@@ -82,7 +58,7 @@ async def ping(ctx):
     await ctx.send("Pong!")
 
 # =======================
-# AUTO-RESTART LOOP
+# AUTO-RESTART
 # =======================
 def start_bot():
     while True:
